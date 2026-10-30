@@ -3,22 +3,27 @@
 #include<iostream>
 
 class Wisp {
-	Engine engine;
-	Engine::TextureHandle RenderTargetTexture;
-	Engine::BufferHandle UBHandle;
 
+	//Engine Initialization
+	Engine engine;
+
+	//Graphics Pipeline
 	VkPipeline GraphicsPipeline;
 	VkPipelineLayout GraphicsPipelineLayout;
 
-	VkDescriptorSet UBDescriptorSet;
-	VkDescriptorSetLayout UBDescriptorSetLayout;
+	//A Single Sphere Geometry
+	Engine::Geometry geometry; // vertex + index data
 
-	VkDescriptorSet RenderTargetDescriptorSet;
-	VkDescriptorSetLayout RenderTargetDescriptorSetLayout;
+	//Particles
+	struct Particle {
+		glm::vec4 position;
+		glm::vec4 velocity;
+	};
 
-	struct UniformData {
-		float index;
-	} uniformData;
+	std::vector< Particle > particles;
+	Engine::BufferHandle ParticleBufferHandle; //GPU Memory Handle
+	VkDescriptorSet PBDescriptorSet;
+	VkDescriptorSetLayout PBDescriptorSetLayout;
 
 	void generatePipeline() {
 		//GRAPHICS PIPELINE
@@ -36,15 +41,115 @@ class Wisp {
 			.pName = "main"
 		};
 
-		std::vector< VkPipelineShaderStageCreateInfo > shaderStages;
-		shaderStages.push_back(vertexShaderStage);
-		shaderStages.push_back(fragmentShaderStage);
+		std::vector< VkPipelineShaderStageCreateInfo > shaderStages = { vertexShaderStage, fragmentShaderStage };
 
-		engine.pipelineManager.createGraphicsPipeline(GraphicsPipeline, GraphicsPipelineLayout, {}, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, 0);
+		std::vector< VkDescriptorSetLayout > layouts = { PBDescriptorSetLayout };
+
+		VkVertexInputBindingDescription binding{
+			.binding = 0,
+			.stride = sizeof(Engine::Vertex),
+			.inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+		};
+
+		std::vector<VkVertexInputAttributeDescription> attributes = {
+			{
+				.location = 0,
+				.binding = 0,
+				.format = VK_FORMAT_R32G32B32_SFLOAT,
+				.offset = offsetof(Engine::Vertex, position)
+			},
+			{
+				.location = 1,
+				.binding = 0,
+				.format = VK_FORMAT_R32G32B32_SFLOAT,
+				.offset = offsetof(Engine::Vertex, normal)
+			}
+		};
+
+		VkPipelineVertexInputStateCreateInfo vertexInputInfo{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+			.vertexBindingDescriptionCount = 1,
+			.pVertexBindingDescriptions = &binding,
+			.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size()),
+			.pVertexAttributeDescriptions = attributes.data()
+		};
+
+		engine.pipelineManager.createGraphicsPipeline(GraphicsPipeline, GraphicsPipelineLayout, layouts, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, vertexInputInfo, 0);
+	}
+
+	void generateSSBO() {
+		particles.resize(1000);
+
+		for (auto& particle : particles)
+		{
+			particle.position = glm::vec4(
+				engine.generateRandomNumber(-0.8, 0.8),
+				engine.generateRandomNumber(-0.8, 0.8),
+				engine.generateRandomNumber(0.1, 0.9),
+				1.0f
+			);
+
+			particle.velocity = glm::vec4(0.0f);
+		}
+
+		ParticleBufferHandle.size = particles.size() * sizeof( Particle );
+		engine.resourceManager.setupBuffer(ParticleBufferHandle, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT );
+
+		VkDescriptorSetLayoutBinding binding{
+			.binding = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+		};
+
+		PBDescriptorSetLayout = engine.resourceManager.createDescriptorSetLayout({ binding });
+		PBDescriptorSet = engine.resourceManager.allocateDescriptorSets({ PBDescriptorSetLayout });
+
+		VkDescriptorBufferInfo bufferInfo{
+			.buffer = ParticleBufferHandle.buffer,
+			.offset = 0,
+			.range = ParticleBufferHandle.size
+		};
+
+		std::vector< VkWriteDescriptorSet > bufferUpdate = { {
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = PBDescriptorSet,
+			.dstBinding = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.pBufferInfo = &bufferInfo
+		} };
+
+		engine.resourceManager.updateDescriptorSet(bufferUpdate);
+	
+		engine.resourceManager.copyDataIntoBuffer(ParticleBufferHandle.allocationInfo.pMappedData, particles.data(), ParticleBufferHandle.size );
+	}
+
+	void generateSphere() {
+		geometry = engine.solidShapes.generateSphere( 32, 32 );
+
+		//VERTEX BUFFER
+		geometry.VHandle.size = sizeof( Engine::Vertex ) * geometry.vertices.size();
+		engine.resourceManager.setupBuffer(geometry.VHandle, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+
+		engine.resourceManager.copyDataIntoBuffer(geometry.VHandle.allocationInfo.pMappedData, geometry.vertices.data(), geometry.VHandle.size);
+
+		//INDEX BUFFER
+		geometry.IHandle.size = sizeof( uint32_t ) * geometry.indices.size();
+		engine.resourceManager.setupBuffer(geometry.IHandle, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+
+		engine.resourceManager.copyDataIntoBuffer(geometry.IHandle.allocationInfo.pMappedData, geometry.indices.data(), geometry.IHandle.size);
 	}
 
 	void setup() {
 		engine.configure("Wisp", VK_API_VERSION_1_4);
+
+		engine.resourceManager.setupDescriptorPool({
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 }
+		});
+
+		generateSphere();
+		generateSSBO();
 		generatePipeline();
 	}
 
@@ -139,11 +244,16 @@ class Wisp {
 			};
 			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
+			VkDeviceSize offset = 0;
+
 			engine.barrier.transitionImageFromUndefinedToColorAttachment(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
 			RenderingAttachment renderingAttachment = setRenderingAttachment(engine.swapchainManager.imageViews[engine.swapchainManager.imageIndex] );
 			vkCmdBeginRendering(commandBuffer, &renderingAttachment.renderingInfo );
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &geometry.VHandle.buffer, &offset);
+			vkCmdBindIndexBuffer(commandBuffer, geometry.IHandle.buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipelineLayout, 0, 1, &PBDescriptorSet, 0, nullptr);
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
-			vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+			vkCmdDrawIndexed(commandBuffer, geometry.indices.size(), particles.size(), 0, 0, 0);
 			vkCmdEndRendering(commandBuffer);
 			engine.barrier.transitionImageFromColorAttachmentToPresent(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
 			

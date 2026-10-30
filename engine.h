@@ -7,6 +7,7 @@
 #include "resourceManager.h"
 #include "shaders.h"
 #include "barriers.h"
+#include "SolidShapes.h"
 
 class Engine {
 public:
@@ -17,9 +18,14 @@ public:
 	ResourceManager resourceManager;
 	Shaders shadersIF;
 	Barriers barrier;
+	SolidShapes solidShapes;
+
+	struct RNDGenerator;
 
 	using TextureHandle = ResourceManager::TextureHandle;
 	using BufferHandle = ResourceManager::BufferHandle;
+	using Geometry = SolidShapes::Geometry;
+	using Vertex = SolidShapes::Vertex;
 
 public:
 	void configure(std::string name, uint32_t API_VERSION );	
@@ -28,4 +34,6 @@ public:
 	ResourceManager::TextureHandle& generateTextureHandle();
 	VkShaderModule compileShader(std::string moduleName, std::string path);
 	void generateTexture(ResourceManager::TextureHandle& handle);
+
+	float generateRandomNumber( float min, float max );
 };

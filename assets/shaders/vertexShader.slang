@@ -1,19 +1,36 @@
+struct Particle
+{
+    float4 position;
+    float4 velocity;
+};
+
+struct VSInput
+{
+    float3 position : POSITION;
+    float3 normal   : NORMAL;
+};
+
 struct VSOutput
 {
     float4 position : SV_Position;
 };
 
-[shader("vertex")]
-VSOutput main(uint vertexID : SV_VertexID)
-{
-    float2 positions[3] = {
-        float2(-0.5, 0.5),
-        float2( 0.0, -0.5),
-        float2( 0.5, 0.5)
-    };
+[[vk::binding(0, 0)]]
+StructuredBuffer<Particle> particles;
 
+[shader("vertex")]
+VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
+{
     VSOutput output;
-    output.position = float4(positions[vertexID], 0.0, 1.0);
+
+    float3 particlePosition = particles[instanceID].position.xyz;
+
+    float sphereScale = 0.02;
+
+    float3 worldPosition =
+        input.position * sphereScale + particlePosition;
+
+    output.position = float4(worldPosition, 1.0);
 
     return output;
 }

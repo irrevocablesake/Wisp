@@ -1,5 +1,7 @@
 #include "engine.h"
 
+#include<random>
+
 void Engine::configure(std::string name, uint32_t API_VERSION) {
 	vulkanContext.setup(name, API_VERSION);
 	windowManager.setup(vulkanContext);
@@ -16,6 +18,23 @@ void Engine::updateSwapchain() {
 	else {
 		swapchainManager.recreateSwapchain();
 	}
+}
+
+struct Engine::RNDGenerator {
+	private:
+		std::random_device rd;
+		std::mt19937 gen{ rd() };
+
+	public:
+		float getRange(float min, float max) {
+			std::uniform_real_distribution<float> range{ min, max };
+			return range(gen);
+		}
+	
+} rndGenerator;
+
+float Engine::generateRandomNumber(float min, float max) {
+	return rndGenerator.getRange(min, max);
 }
 
 VulkanContext::Frame& Engine::getCurrentFrame() {

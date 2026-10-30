@@ -14,7 +14,7 @@ void PipelineManager::createComputePipeline(VkPipeline& pipeline, VkPipelineShad
 	vkCreateComputePipelines(vulkanContext->logicalDeviceIF.handle, nullptr, 1, &pipelineCI, nullptr, &pipeline);
 }
 
-void PipelineManager::createGraphicsPipeline(VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, const std::vector<VkDescriptorSetLayout>& layout, VkFormat format, std::vector< VkPipelineShaderStageCreateInfo >& shaderStages, uint32_t pushConstantSize ) {
+void PipelineManager::createGraphicsPipeline(VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, const std::vector<VkDescriptorSetLayout>& layout, VkFormat format, std::vector< VkPipelineShaderStageCreateInfo >& shaderStages, VkPipelineVertexInputStateCreateInfo& vertexInputState, uint32_t pushConstantSize ) {
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
 	if (pushConstantSize == 0) {
 		pipelineLayoutCreateInfo = {
@@ -39,14 +39,6 @@ void PipelineManager::createGraphicsPipeline(VkPipeline& pipeline, VkPipelineLay
 	}
 
 	vkCreatePipelineLayout(vulkanContext -> logicalDeviceIF.handle, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout);
-
-	VkPipelineVertexInputStateCreateInfo vertexInputState{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-		.vertexBindingDescriptionCount = 0,
-		.pVertexBindingDescriptions = nullptr,
-		.vertexAttributeDescriptionCount = 0,
-		.pVertexAttributeDescriptions = nullptr,
-	};
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyState{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
