@@ -1,3 +1,5 @@
+#include "CudaInterface.h"
+#include "Particles.h"
 #include "engine.h"
 
 #include<iostream>
@@ -7,23 +9,22 @@ class Wisp {
 	//Engine Initialization
 	Engine engine;
 
+	//SEMAPHORE
+	VkSemaphore cudaToVk;
+	VkSemaphore vkToCuda;
+
+	HANDLE cudaToVkHandle;
+	HANDLE vkToCudaHandle;
+
+	//CUDA Context
+	CudaInterface cudaInterface;
+
 	//Graphics Pipeline
 	VkPipeline GraphicsPipeline;
 	VkPipelineLayout GraphicsPipelineLayout;
 
-	//A Single Sphere Geometry
-	Engine::Geometry geometry; // vertex + index data
-
 	//Particles
-	struct Particle {
-		glm::vec4 position;
-		glm::vec4 velocity;
-	};
-
-	std::vector< Particle > particles;
-	Engine::BufferHandle ParticleBufferHandle; //GPU Memory Handle
-	VkDescriptorSet PBDescriptorSet;
-	VkDescriptorSetLayout PBDescriptorSetLayout;
+	Particles particles;
 
 	void generatePipeline() {
 		//GRAPHICS PIPELINE
@@ -43,7 +44,7 @@ class Wisp {
 
 		std::vector< VkPipelineShaderStageCreateInfo > shaderStages = { vertexShaderStage, fragmentShaderStage };
 
-		std::vector< VkDescriptorSetLayout > layouts = { PBDescriptorSetLayout };
+		std::vector< VkDescriptorSetLayout > layouts = { particles.PBDescriptorSetLayout };
 
 		VkVertexInputBindingDescription binding{
 			.binding = 0,
@@ -77,68 +78,21 @@ class Wisp {
 		engine.pipelineManager.createGraphicsPipeline(GraphicsPipeline, GraphicsPipelineLayout, layouts, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, vertexInputInfo, 0);
 	}
 
-	void generateSSBO() {
-		particles.resize(1000);
+	void generateParticles() {
+		particles.initialize(engine);
+		particles.generate(1000);
 
-		for (auto& particle : particles)
-		{
-			particle.position = glm::vec4(
-				engine.generateRandomNumber(-0.8, 0.8),
-				engine.generateRandomNumber(-0.8, 0.8),
-				engine.generateRandomNumber(0.1, 0.9),
-				1.0f
-			);
+		HANDLE sharedHandle = engine.resourceManager.exportBuffer( particles.PBHandle );
 
-			particle.velocity = glm::vec4(0.0f);
-		}
+		//USAGE OF RESULT IS PENDING
+		CudaInterface::CudaBuffer result = cudaInterface.cudaContext.importBuffer(
+			sharedHandle,
+			particles.PBHandle.allocationInfo.size,
+			particles.PBHandle.size
+		);
 
-		ParticleBufferHandle.size = particles.size() * sizeof( Particle );
-		engine.resourceManager.setupBuffer(ParticleBufferHandle, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT );
-
-		VkDescriptorSetLayoutBinding binding{
-			.binding = 0,
-			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-			.descriptorCount = 1,
-			.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
-		};
-
-		PBDescriptorSetLayout = engine.resourceManager.createDescriptorSetLayout({ binding });
-		PBDescriptorSet = engine.resourceManager.allocateDescriptorSets({ PBDescriptorSetLayout });
-
-		VkDescriptorBufferInfo bufferInfo{
-			.buffer = ParticleBufferHandle.buffer,
-			.offset = 0,
-			.range = ParticleBufferHandle.size
-		};
-
-		std::vector< VkWriteDescriptorSet > bufferUpdate = { {
-			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-			.dstSet = PBDescriptorSet,
-			.dstBinding = 0,
-			.descriptorCount = 1,
-			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-			.pBufferInfo = &bufferInfo
-		} };
-
-		engine.resourceManager.updateDescriptorSet(bufferUpdate);
-	
-		engine.resourceManager.copyDataIntoBuffer(ParticleBufferHandle.allocationInfo.pMappedData, particles.data(), ParticleBufferHandle.size );
-	}
-
-	void generateSphere() {
-		geometry = engine.solidShapes.generateSphere( 32, 32 );
-
-		//VERTEX BUFFER
-		geometry.VHandle.size = sizeof( Engine::Vertex ) * geometry.vertices.size();
-		engine.resourceManager.setupBuffer(geometry.VHandle, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-
-		engine.resourceManager.copyDataIntoBuffer(geometry.VHandle.allocationInfo.pMappedData, geometry.vertices.data(), geometry.VHandle.size);
-
-		//INDEX BUFFER
-		geometry.IHandle.size = sizeof( uint32_t ) * geometry.indices.size();
-		engine.resourceManager.setupBuffer(geometry.IHandle, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-
-		engine.resourceManager.copyDataIntoBuffer(geometry.IHandle.allocationInfo.pMappedData, geometry.indices.data(), geometry.IHandle.size);
+		cudaInterface.particlesKernel.cudaBuffer = result.devicePointer;
+		cudaInterface.particlesKernel.externalMemory = result.externalMemory;
 	}
 
 	void setup() {
@@ -148,43 +102,30 @@ class Wisp {
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 }
 		});
 
-		generateSphere();
-		generateSSBO();
+		cudaInterface.initialize(engine.vulkanContext.physicalDeviceIF.uuid);
+
+		vkToCuda = engine.vulkanContext.createExportableSemaphore();
+		cudaToVk = engine.vulkanContext.createExportableSemaphore();
+
+		vkToCudaHandle = engine.vulkanContext.exportSemaphore(vkToCuda);
+		cudaToVkHandle = engine.vulkanContext.exportSemaphore(cudaToVk);
+
+		cudaInterface.particlesKernel.vkToCuda = cudaInterface.importSemaphore(
+			vkToCudaHandle
+		);
+
+		cudaInterface.particlesKernel.cudaToVk = cudaInterface.importSemaphore(
+			cudaToVkHandle
+		);
+
+		generateParticles();
 		generatePipeline();
-	}
 
-	struct RenderingAttachment {
-		VkRenderingAttachmentInfo attachmentInfo;
-		VkRenderingInfo renderingInfo;
-	};
-
-	RenderingAttachment setRenderingAttachment(VkImageView& imageView) {
-		RenderingAttachment attachment{};
-		attachment.attachmentInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-			.imageView = imageView,
-			.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-			.clearValue{
-				engine.windowManager.clearColor
-			}
-		};
-
-		attachment.renderingInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-			.renderArea{
-				.extent{
-					.width = static_cast<uint32_t>( engine.windowManager.windowSize.x),
-					.height = static_cast<uint32_t>(engine.windowManager.windowSize.y )
-				},
-			},
-			.layerCount = 1,
-			.colorAttachmentCount = 1,
-			.pColorAttachments = &attachment.attachmentInfo
-		};
-
-		return attachment;
+		cudaInterface.particlesKernel.updateParticles(
+			static_cast<unsigned int>( particles.count() ),
+			0.0f,
+			false
+		);
 	}
 
 	void animate() {
@@ -214,7 +155,6 @@ class Wisp {
 			elapsedTime = (float)(currentFrameTime - startFrameTime) / (float)frequency;
 
 			vkWaitForFences( engine.vulkanContext.logicalDeviceIF.handle, 1, &engine.getCurrentFrame().frameFence, true, UINT64_MAX);
-			vkResetFences(engine.vulkanContext.logicalDeviceIF.handle, 1, &engine.getCurrentFrame().frameFence);
 
 			vkAcquireNextImageKHR(engine.vulkanContext.logicalDeviceIF.handle, engine.swapchainManager.swapchain, UINT64_MAX, engine.getCurrentFrame().imageAvailable, VK_NULL_HANDLE, &engine.swapchainManager.imageIndex);
 
@@ -247,30 +187,60 @@ class Wisp {
 			VkDeviceSize offset = 0;
 
 			engine.barrier.transitionImageFromUndefinedToColorAttachment(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
-			RenderingAttachment renderingAttachment = setRenderingAttachment(engine.swapchainManager.imageViews[engine.swapchainManager.imageIndex] );
+			Engine::RenderingAttachment renderingAttachment = engine.setRenderingAttachment(engine.swapchainManager.imageViews[engine.swapchainManager.imageIndex] );
 			vkCmdBeginRendering(commandBuffer, &renderingAttachment.renderingInfo );
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &geometry.VHandle.buffer, &offset);
-			vkCmdBindIndexBuffer(commandBuffer, geometry.IHandle.buffer, 0, VK_INDEX_TYPE_UINT32);
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipelineLayout, 0, 1, &PBDescriptorSet, 0, nullptr);
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &particles.particleGeometry.VHandle.buffer, &offset);
+			vkCmdBindIndexBuffer(commandBuffer, particles.particleGeometry.IHandle.buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipelineLayout, 0, 1, &particles.PBDescriptorSet, 0, nullptr);
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
-			vkCmdDrawIndexed(commandBuffer, geometry.indices.size(), particles.size(), 0, 0, 0);
+			vkCmdDrawIndexed(commandBuffer, particles.particleGeometry.indices.size(), particles.count(), 0, 0, 0);
 			vkCmdEndRendering(commandBuffer);
 			engine.barrier.transitionImageFromColorAttachmentToPresent(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
 			
 			vkEndCommandBuffer(commandBuffer);
 
-			VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			VkSemaphore waitSemaphores[] = {
+				engine.getCurrentFrame().imageAvailable,
+				cudaToVk
+			};
+
+			VkPipelineStageFlags waitStages[] = {
+				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+				VK_PIPELINE_STAGE_VERTEX_SHADER_BIT
+			};
+
+			VkSemaphore signalSemaphores[] = {
+				engine.swapchainManager.renderSemaphores[
+					engine.swapchainManager.imageIndex
+				],
+				vkToCuda
+			};
+
 			VkSubmitInfo submitInfo{
 				.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-				.waitSemaphoreCount = 1,
-				.pWaitSemaphores = &engine.getCurrentFrame().imageAvailable,
-				.pWaitDstStageMask = &waitStages,
+				.waitSemaphoreCount = 2,
+				.pWaitSemaphores = waitSemaphores,
+				.pWaitDstStageMask = waitStages,
 				.commandBufferCount = 1,
 				.pCommandBuffers = &commandBuffer,
-				.signalSemaphoreCount = 1,
-				.pSignalSemaphores = &engine.swapchainManager.renderSemaphores[engine.swapchainManager.imageIndex],
+				.signalSemaphoreCount = 2,
+				.pSignalSemaphores = signalSemaphores
 			};
-			vkQueueSubmit( engine.vulkanContext.queueIF.handle, 1, &submitInfo, engine.getCurrentFrame().frameFence );
+
+			vkResetFences(engine.vulkanContext.logicalDeviceIF.handle, 1, &engine.getCurrentFrame().frameFence);
+
+			vkQueueSubmit(
+				engine.vulkanContext.queueIF.handle,
+				1,
+				&submitInfo,
+				engine.getCurrentFrame().frameFence
+			);
+
+			cudaInterface.particlesKernel.updateParticles(
+				static_cast<unsigned int>(particles.count()),
+				dt,
+				true
+			);
 
 			engine.vulkanContext.currentFrame = (engine.vulkanContext.currentFrame + 1) % engine.vulkanContext.MAX_FRAMES_IN_FLIGHT;
 
@@ -282,9 +252,11 @@ class Wisp {
 				.pSwapchains = &engine.swapchainManager.swapchain,
 				.pImageIndices = &engine.swapchainManager.imageIndex
 			};
-			vkQueuePresentKHR(engine.vulkanContext.queueIF.handle, &presentInfo);
 
-			engine.updateSwapchain();
+			VkResult presentResult = vkQueuePresentKHR(
+				engine.vulkanContext.queueIF.handle,
+				&presentInfo
+			);
 		}
 	}
 

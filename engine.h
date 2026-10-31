@@ -36,4 +36,11 @@ public:
 	void generateTexture(ResourceManager::TextureHandle& handle);
 
 	float generateRandomNumber( float min, float max );
+
+	struct RenderingAttachment {
+		VkRenderingAttachmentInfo attachmentInfo;
+		VkRenderingInfo renderingInfo;
+	};
+
+	RenderingAttachment setRenderingAttachment(VkImageView& imageView);
 };

@@ -1,14 +1,25 @@
 #pragma once
 
-#include<volk/volk.h>
-#include<vma/vk_mem_alloc.h>
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 
-#include<SDL3/SDL.h>
-#include<SDL3/SDL_vulkan.h>
+#include <windows.h>
 
-#include<vector>
-#include<array>
-#include<string>
+#define VK_USE_PLATFORM_WIN32_KHR
+
+#include <volk/volk.h>
+#include <vulkan/vulkan_win32.h>  // ADD THIS
+
+#include <vma/vk_mem_alloc.h>
+
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+
+#include <vector>
+#include <array>
+#include <string>
 
 class VulkanContext {
 	public:
@@ -25,6 +36,8 @@ class VulkanContext {
 			uint32_t index;
 			std::vector<VkPhysicalDevice> devices;
 			std::vector<VkPhysicalDeviceProperties2> properties;
+			std::vector< std::array<uint8_t, VK_UUID_SIZE> > UUIDS;
+			std::array<uint8_t, VK_UUID_SIZE> uuid{};
 		} physicalDeviceIF;
 
 		struct LogicalDevice {
@@ -51,7 +64,9 @@ class VulkanContext {
 
 			struct Device {
 				const std::vector< const char* > extensions{
-					VK_KHR_SWAPCHAIN_EXTENSION_NAME
+					VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+					VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,
+					VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME
 				};
 			} deviceIF;
 		} extensionsIF;
@@ -81,6 +96,8 @@ class VulkanContext {
 		void setupCommandPool();
 		void setupFrames();
 		void setup( std::string name, uint32_t API_VERSION_PARAM );
+		VkSemaphore createExportableSemaphore();
+		HANDLE exportSemaphore(VkSemaphore semaphore);
 
 		Frame& getCurrentFrame() {
 			return frames[currentFrame];

@@ -1,2 +1,4 @@
-# Firefly
-Compute Shader Based Ray Tracing Engine
+# Wisp
+
+Note: Please clean-up the header / cpp file includes
+

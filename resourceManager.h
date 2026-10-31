@@ -1,18 +1,16 @@
 #pragma once
 
-#include<volk/volk.h>
-#include<vma/vk_mem_alloc.h>
+#include "VulkanContext.h"
 
-#define KHRONOS_STATIC 
-#include<ktx.h>
-#include<ktxvulkan.h>
+#define KHRONOS_STATIC
+#include <ktx.h>
+#include <ktxvulkan.h>
 
 #include "barriers.h"
 
-#include "VulkanContext.h"
-
-#include<map>
-#include<vector>
+#include <map>
+#include <vector>
+#include <Windows.h>
 
 class ResourceManager {
 	Barriers barrier;
@@ -50,7 +48,7 @@ class ResourceManager {
 		VkDescriptorPool descriptorPool;
 
 	public:
-		void setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags);
+		void setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags, bool interop = false );
 		void copyDataIntoBuffer( void* destination, const void* source, size_t size );
 
 		void generateTexture(TextureHandle& handle );
@@ -63,4 +61,6 @@ class ResourceManager {
 		void updateDescriptorSet(std::vector< VkWriteDescriptorSet > descriptorSets);
 
 		VkDescriptorSet allocateDescriptorSets(VkDescriptorSetLayout layout );
+
+		HANDLE exportBuffer(BufferHandle& handle);
 };

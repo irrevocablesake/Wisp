@@ -1,10 +1,18 @@
-#include "VulkanContext.h"
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
+#define VK_USE_PLATFORM_WIN32_KHR
 
 #define VOLK_IMPLEMENTATION
-#include<volk/volk.h>
+#include <volk/volk.h>
 
 #define VMA_IMPLEMENTATION
-#include<vma/vk_mem_alloc.h>
+#include <vma/vk_mem_alloc.h>
+
+#include "VulkanContext.h"
 
 void VulkanContext::setup( std::string name, uint32_t API_VERSION_PARAM ) {
 
@@ -55,12 +63,26 @@ void VulkanContext::pickPhysicalDevice() {
 	vkEnumeratePhysicalDevices( instanceIF.handle, &physicalDeviceIF.count, physicalDeviceIF.devices.data());
 
 	for (uint32_t i = 0; i < physicalDeviceIF.count; i++) {
+		VkPhysicalDeviceIDProperties idProp{
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES
+		};
+
 		VkPhysicalDeviceProperties2 prop{
-			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+			.pNext = &idProp
 		};
 
 		vkGetPhysicalDeviceProperties2(physicalDeviceIF.devices[i], &prop);
 		physicalDeviceIF.properties.push_back(prop);
+
+		std::array<uint8_t, VK_UUID_SIZE> uuid{};
+		std::copy_n(
+			idProp.deviceUUID,
+			VK_UUID_SIZE,
+			uuid.begin()
+		);
+
+		physicalDeviceIF.UUIDS.push_back(uuid);
 	}
 		bool found = false;
 
@@ -70,11 +92,10 @@ void VulkanContext::pickPhysicalDevice() {
 			if (cond1) {
 				physicalDeviceIF.index = i;
 				physicalDeviceIF.handle = physicalDeviceIF.devices[i];
-
+				physicalDeviceIF.uuid = physicalDeviceIF.UUIDS[i];
 				found = true;
 			}
 
-		
 		if (found) {
 			break;
 		}
@@ -166,11 +187,12 @@ void VulkanContext::setupLogicalDevice() {
 void VulkanContext::setupVMA() {
 	VmaVulkanFunctions vulkanFns{
 		.vkGetInstanceProcAddr = vkGetInstanceProcAddr,
-		.vkGetDeviceProcAddr = vkGetDeviceProcAddr
+		.vkGetDeviceProcAddr = vkGetDeviceProcAddr,
+		.vkGetMemoryWin32HandleKHR = vkGetMemoryWin32HandleKHR
 	};
 
 	VmaAllocatorCreateInfo allocatorCI{
-		.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+		.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT | VMA_ALLOCATOR_CREATE_KHR_EXTERNAL_MEMORY_WIN32_BIT,
 		.physicalDevice = physicalDeviceIF.handle,
 		.device = logicalDeviceIF.handle,
 		.pVulkanFunctions = &vulkanFns,
@@ -214,4 +236,53 @@ void VulkanContext::setupFrames() {
 
 		vkAllocateCommandBuffers(logicalDeviceIF.handle, &commandBufferAllocateCreateInfo, &frame.commandBuffer);
 	}
+}
+
+VkSemaphore VulkanContext::createExportableSemaphore()
+{
+	VkExportSemaphoreCreateInfo exportInfo{
+		.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO,
+		.handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT
+	};
+
+	VkSemaphoreCreateInfo semaphoreInfo{
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		.pNext = &exportInfo
+	};
+
+	VkSemaphore semaphore{};
+
+	VkResult result = vkCreateSemaphore(
+		logicalDeviceIF.handle,
+		&semaphoreInfo,
+		nullptr,
+		&semaphore
+	);
+
+	if (result != VK_SUCCESS)
+		throw std::runtime_error("Failed to create exportable semaphore!");
+
+	return semaphore;
+}
+
+HANDLE VulkanContext::exportSemaphore(VkSemaphore semaphore)
+{
+	VkSemaphoreGetWin32HandleInfoKHR handleInfo{
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR,
+		.semaphore = semaphore,
+		.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT
+	};
+
+	HANDLE handle{};
+
+	VkResult result = vkGetSemaphoreWin32HandleKHR(
+		logicalDeviceIF.handle,
+		&handleInfo,
+		&handle
+	);
+
+	if (result != VK_SUCCESS)
+		throw std::runtime_error("Failed to export semaphore!");
+
+	return handle;
 }

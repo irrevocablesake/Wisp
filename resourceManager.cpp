@@ -1,25 +1,61 @@
 #include "resourceManager.h"
 
+#include <stdexcept>
 #include<cstring>
 
 void ResourceManager::copyDataIntoBuffer(void* destination, const void* source, size_t size) {
 	memcpy(destination, source, size);
 }
 
-void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags ) {
-	VkBufferCreateInfo uniformBufferCreateInfo{
-		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-		.size = handle.size,
-		.usage = flags | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
-	};
+void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags, bool interop ) {
+	
+	VkBufferCreateInfo uniformBufferCreateInfo;
+	if (interop) {
+		VkExternalMemoryBufferCreateInfo externalBufferInfo{
+			.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
+			.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
+		};
+
+		uniformBufferCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+			.pNext = &externalBufferInfo,
+			.size = handle.size,
+			.usage = flags | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+		};
+	}
+	else {
+		uniformBufferCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+			.size = handle.size,
+			.usage = flags | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+		};
+	}
 
 	VmaAllocationCreateInfo uniformBufferAllocationCreateInfo{
 		.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
 		.usage = VMA_MEMORY_USAGE_AUTO
 	};
 
-	//validation later
-	vmaCreateBuffer(vulkanContext->allocatorIF.handle, &uniformBufferCreateInfo, &uniformBufferAllocationCreateInfo, &handle.buffer, &handle.allocation, &handle.allocationInfo);
+	if (interop) {
+		VkExportMemoryAllocateInfo exportInfo{
+		   .sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
+		   .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
+		};
+
+		vmaCreateDedicatedBuffer(
+			vulkanContext ->allocatorIF.handle,
+			&uniformBufferCreateInfo,
+			&uniformBufferAllocationCreateInfo,
+			&exportInfo,
+			&handle.buffer,
+			&handle.allocation,
+			&handle.allocationInfo
+		);
+	}
+	else {
+		//validation later
+		vmaCreateBuffer(vulkanContext->allocatorIF.handle, &uniformBufferCreateInfo, &uniformBufferAllocationCreateInfo, &handle.buffer, &handle.allocation, &handle.allocationInfo);
+	}
 
 	VkBufferDeviceAddressInfo uniformBDAInfo{
 		.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
@@ -27,6 +63,25 @@ void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags
 	};
 
 	handle.deviceAddress = vkGetBufferDeviceAddress(vulkanContext->logicalDeviceIF.handle, &uniformBDAInfo);
+}
+
+HANDLE ResourceManager::exportBuffer(BufferHandle& handle) {
+
+	HANDLE sharedHandle = nullptr;
+
+	VkResult result = vmaGetMemoryWin32Handle2(
+		vulkanContext->allocatorIF.handle,
+		handle.allocation,
+		VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT,
+		nullptr,
+		&sharedHandle
+	);
+
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("Failed to export Vulkan memory!");
+	}
+
+	return sharedHandle;
 }
 
 void ResourceManager::generateTexture( TextureHandle& handle) {

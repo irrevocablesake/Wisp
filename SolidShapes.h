@@ -8,14 +8,19 @@
 using namespace std;
 
 class SolidShapes {
+private:
     const float PI = 3.14159265359f;
-
+    ResourceManager* resourceManager;
 public: 
+    void initialize(ResourceManager&_resourceManager) {
+        resourceManager = &_resourceManager;
+    }
 
     struct Vertex {
         glm::vec3 position;
         glm::vec3 normal;
     };
+
 	struct Geometry {
 		std::vector< Vertex > vertices;
 		std::vector< uint32_t > indices;
@@ -66,6 +71,16 @@ public:
                 geometry.indices.push_back(b);
             }
         }
+
+        //VERTEX BUFFER
+        geometry.VHandle.size = sizeof(Vertex) * geometry.vertices.size();
+        resourceManager -> setupBuffer(geometry.VHandle, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        resourceManager -> copyDataIntoBuffer(geometry.VHandle.allocationInfo.pMappedData, geometry.vertices.data(), geometry.VHandle.size);
+
+        //INDEX BUFFER
+        geometry.IHandle.size = sizeof(uint32_t) * geometry.indices.size();
+        resourceManager -> setupBuffer(geometry.IHandle, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+        resourceManager -> copyDataIntoBuffer(geometry.IHandle.allocationInfo.pMappedData, geometry.indices.data(), geometry.IHandle.size);
 
         return geometry;
 	}
