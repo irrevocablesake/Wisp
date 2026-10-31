@@ -12,6 +12,7 @@ __global__ void updateKernel( ParticlesKernel::CudaParticle* particles, unsigned
 
 	particles[index].position.x += particles[index].velocity.x * deltaTime;
 	particles[index].position.y += particles[index].velocity.y * deltaTime;
+	particles[index].position.z += particles[index].velocity.z * deltaTime;
 }
 
 void ParticlesKernel::launchParticleUpdate(void* buffer, unsigned int count, float deltaTime) {

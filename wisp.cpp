@@ -2,6 +2,9 @@
 #include "Particles.h"
 #include "engine.h"
 
+#include<glm/gtc/matrix_transform.hpp>
+#include<glm/gtc/quaternion.hpp>
+
 #include<iostream>
 
 class Wisp {
@@ -19,12 +22,62 @@ class Wisp {
 	//CUDA Context
 	CudaInterface cudaInterface;
 
+	//UNIFORM BUFFER
+	Engine::BufferHandle UBHandle;
+	VkDescriptorSet UBDescriptorSet;
+	VkDescriptorSetLayout UBDescriptorSetLayout;
+
 	//Graphics Pipeline
 	VkPipeline GraphicsPipeline;
 	VkPipelineLayout GraphicsPipelineLayout;
 
 	//Particles
 	Particles particles;
+
+	struct UniformData {
+		glm::mat4 model = glm::scale( glm::mat4(1.0f), glm::vec3(0.02f) );
+		glm::mat4 view = glm::mat4(1.0f);
+		glm::mat4 projection = glm::mat4(1.0f);
+	} uniformData;
+
+	struct Camera {
+		glm::vec3 position{ 4.0f, 4, 4.0f };
+		glm::vec3 cameraUp{ 0, 1, 0 };
+		glm::vec3 lookAt{ 0.0f, 0, 0.0f };
+	} camera;
+
+	void setupUB(){
+		UBHandle.size = sizeof( UniformData );
+		engine.resourceManager.setupBuffer(UBHandle, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true);
+
+		VkDescriptorSetLayoutBinding binding{
+			.binding = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+		};
+
+		UBDescriptorSetLayout = engine.resourceManager.createDescriptorSetLayout({ binding });
+		UBDescriptorSet = engine.resourceManager.allocateDescriptorSets({ UBDescriptorSetLayout });
+
+		VkDescriptorBufferInfo bufferInfo{
+			.buffer = UBHandle.buffer,
+			.offset = 0,
+			.range = UBHandle.size
+		};
+
+		std::vector< VkWriteDescriptorSet > bufferUpdate = { {
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = UBDescriptorSet,
+			.dstBinding = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			.pBufferInfo = &bufferInfo
+		} };
+
+		engine.resourceManager.updateDescriptorSet(bufferUpdate);
+		engine.resourceManager.copyDataIntoBuffer(UBHandle.allocationInfo.pMappedData, &uniformData, UBHandle.size);
+	}
 
 	void generatePipeline() {
 		//GRAPHICS PIPELINE
@@ -44,7 +97,7 @@ class Wisp {
 
 		std::vector< VkPipelineShaderStageCreateInfo > shaderStages = { vertexShaderStage, fragmentShaderStage };
 
-		std::vector< VkDescriptorSetLayout > layouts = { particles.PBDescriptorSetLayout };
+		std::vector< VkDescriptorSetLayout > layouts = { particles.PBDescriptorSetLayout, UBDescriptorSetLayout };
 
 		VkVertexInputBindingDescription binding{
 			.binding = 0,
@@ -80,7 +133,7 @@ class Wisp {
 
 	void generateParticles() {
 		particles.initialize(engine);
-		particles.generate(1000);
+		particles.generate(100);
 
 		HANDLE sharedHandle = engine.resourceManager.exportBuffer( particles.PBHandle );
 
@@ -99,7 +152,8 @@ class Wisp {
 		engine.configure("Wisp", VK_API_VERSION_1_4);
 
 		engine.resourceManager.setupDescriptorPool({
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 }
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 }
 		});
 
 		cudaInterface.initialize(engine.vulkanContext.physicalDeviceIF.uuid);
@@ -118,6 +172,7 @@ class Wisp {
 			cudaToVkHandle
 		);
 
+		setupUB();
 		generateParticles();
 		generatePipeline();
 
@@ -184,6 +239,12 @@ class Wisp {
 			};
 			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
+			uniformData.projection = glm::perspective(glm::radians(45.0f), (float) engine.windowManager.windowSize.x / (float)engine.windowManager.windowSize.y, 0.1f, 200.0f);
+			uniformData.projection[1][1] *= -1;
+			uniformData.view = glm::lookAt(camera.position, camera.lookAt, camera.cameraUp);
+
+			engine.resourceManager.copyDataIntoBuffer(UBHandle.allocationInfo.pMappedData, &uniformData, UBHandle.size);
+
 			VkDeviceSize offset = 0;
 
 			engine.barrier.transitionImageFromUndefinedToColorAttachment(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
@@ -192,6 +253,7 @@ class Wisp {
 			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &particles.particleGeometry.VHandle.buffer, &offset);
 			vkCmdBindIndexBuffer(commandBuffer, particles.particleGeometry.IHandle.buffer, 0, VK_INDEX_TYPE_UINT32);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipelineLayout, 0, 1, &particles.PBDescriptorSet, 0, nullptr);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipelineLayout, 1, 1, &UBDescriptorSet, 0, nullptr);
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
 			vkCmdDrawIndexed(commandBuffer, particles.particleGeometry.indices.size(), particles.count(), 0, 0, 0);
 			vkCmdEndRendering(commandBuffer);

@@ -33,14 +33,14 @@ public:
 			p.position = glm::vec4(
 				engine->generateRandomNumber(-0.8, 0.8),
 				engine->generateRandomNumber(-0.8, 0.8),
-				0.0f,
+				engine->generateRandomNumber(-0.8, 0.8),
 				0.0f
 			);
 
 			p.velocity = glm::vec4(
 				engine->generateRandomNumber(-0.2, 0.2),
 				engine->generateRandomNumber(-0.2, 0.2),
-				0.0f,
+				engine->generateRandomNumber(-0.2, 0.2),
 				0.0f
 			);
 		}

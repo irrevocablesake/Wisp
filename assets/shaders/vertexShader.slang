@@ -7,7 +7,6 @@ struct Particle
 struct VSInput
 {
     float3 position : POSITION;
-    float3 normal   : NORMAL;
 };
 
 struct VSOutput
@@ -15,22 +14,32 @@ struct VSOutput
     float4 position : SV_Position;
 };
 
+struct UniformData {
+    float4x4 model;
+    float4x4 view;
+    float4x4 projection;
+}
+
 [[vk::binding(0, 0)]]
 StructuredBuffer<Particle> particles;
+
+[[vk::binding(0, 1)]]
+ConstantBuffer<UniformData> uniformData;
 
 [shader("vertex")]
 VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 {
     VSOutput output;
 
-    float3 particlePosition = particles[instanceID].position.xyz;
+    float4 localPosition = float4(input.position, 1.0);
 
-    float sphereScale = 0.02;
+    float4 worldPosition = mul(uniformData.model, localPosition);
+    worldPosition = worldPosition + particles[ instanceID ].position;
 
-    float3 worldPosition =
-        input.position * sphereScale + particlePosition;
+    float4 viewPosition = mul(uniformData.view, worldPosition);
+    float4 clipPosition = mul(uniformData.projection, viewPosition);
 
-    output.position = float4(worldPosition, 1.0);
+    output.position = clipPosition;
 
     return output;
 }
