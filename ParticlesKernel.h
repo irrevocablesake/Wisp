@@ -21,6 +21,9 @@ class ParticlesKernel {
 		void* sortTempStorage = nullptr;
 		size_t sortTempStorageBytes = 0;
 
+		uint32_t* cellStart = nullptr;
+		uint32_t* cellEnd = nullptr;
+
 		struct CudaParticle {
 			float4 position;
 			float4 velocity;
@@ -47,6 +50,7 @@ class ParticlesKernel {
 		void updateParticles(  float deltaTime, bool waitForVulkan = true);
 		void generateIDs();
 		void sortIDs();
+		void buildCellRanges();
 
 		void launchParticleUpdate(void* buffer, float deltaTime );
 };

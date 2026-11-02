@@ -82,6 +82,47 @@ __global__ void generateIDsKernel( const ParticlesKernel::CudaParticle* particle
     particleCellIds[index] = cell.x + gridDimensions.x * ( cell.y + gridDimensions.y * cell.z);
 }
 
+__global__ void buildCellRangesKernel( const uint32_t* sortedCellIds, uint32_t* cellStart, uint32_t* cellEnd, uint32_t particleCount){
+    uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (index >= particleCount)
+        return;
+
+    uint32_t currentCell = sortedCellIds[index];
+
+    if (index == 0 || sortedCellIds[index - 1] != currentCell){
+        cellStart[currentCell] = index;
+    }
+
+    if (index == particleCount - 1 || sortedCellIds[index + 1] != currentCell){
+        cellEnd[currentCell] = index + 1;
+    }
+}
+
+void ParticlesKernel::buildCellRanges()
+{
+    const uint32_t count = simulationParams.particlesCount;
+
+    if (count == 0)
+        return;
+
+    const uint32_t threadsPerBlock = 256;
+    const uint32_t blocks = (count + threadsPerBlock - 1) / threadsPerBlock;
+
+    size_t totalCells = static_cast<size_t>(simulationParams.bounds.dimensions.x) * static_cast<size_t>(simulationParams.bounds.dimensions.y) * static_cast<size_t>(simulationParams.bounds.dimensions.z);
+    size_t arraySize = totalCells * sizeof(uint32_t);
+
+    cudaMemsetAsync(cellStart, 0xFF, arraySize, cudaContext->stream);
+    cudaMemsetAsync(cellEnd, 0xFF, arraySize, cudaContext->stream);
+
+    buildCellRangesKernel << <blocks, threadsPerBlock, 0, cudaContext->stream >> > (
+        sortedCellIds,
+        cellStart,
+        cellEnd,
+        count
+    );
+}
+
 void ParticlesKernel::generateIDs() {
     constexpr unsigned int blockSize = 256;
 
@@ -126,6 +167,16 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext) {
     );
 
     cudaMalloc(&sortTempStorage, sortTempStorageBytes);
+
+    size_t totalCells = static_cast<size_t>(simulationParams.bounds.dimensions.x) * static_cast<size_t>(simulationParams.bounds.dimensions.y) * static_cast<size_t>(simulationParams.bounds.dimensions.z);
+    size_t rangeArraySize = totalCells * sizeof(uint32_t);
+
+    cudaMalloc(&cellStart, rangeArraySize);
+    cudaMalloc(&cellEnd, rangeArraySize);
+
+    //An asynchronous NVIDIA CUDA Runtime API function that fills device memory with a given value on a specified stream without blocking the host CPU
+    cudaMemsetAsync(cellStart, 0xFF, rangeArraySize, cudaContext->stream);
+    cudaMemsetAsync(cellEnd, 0xFF, rangeArraySize, cudaContext->stream);
 }
 
 void ParticlesKernel::sortIDs() {

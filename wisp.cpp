@@ -224,6 +224,7 @@ class Wisp {
 
 		cudaInterface.particlesKernel.generateIDs();
 		cudaInterface.particlesKernel.sortIDs();
+		cudaInterface.particlesKernel.buildCellRanges();
 		cudaInterface.particlesKernel.updateParticles(0.0f, false);
 	}
 
