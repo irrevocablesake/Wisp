@@ -14,6 +14,12 @@ class ParticlesKernel {
 		void* cudaBuffer = nullptr;
 
 		uint32_t* particleCellIds;
+		uint32_t* sortedCellIds = nullptr;
+		uint32_t* particleIndices = nullptr;
+		uint32_t* sortedParticleIndices = nullptr;
+
+		void* sortTempStorage = nullptr;
+		size_t sortTempStorageBytes = 0;
 
 		struct CudaParticle {
 			float4 position;

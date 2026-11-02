@@ -223,7 +223,8 @@ class Wisp {
 		generatePipeline();
 
 		cudaInterface.particlesKernel.generateIDs();
-		cudaInterface.particlesKernel.updateParticles( 0.0f, false );
+		cudaInterface.particlesKernel.sortIDs();
+		cudaInterface.particlesKernel.updateParticles(0.0f, false);
 	}
 
 	void animate() {

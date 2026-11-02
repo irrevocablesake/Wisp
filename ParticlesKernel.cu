@@ -2,10 +2,13 @@
 
 #include<cccl/cub/cub.cuh>
 
-void ParticlesKernel::initialize(CudaContext& _cudaContext ) {
-	cudaContext = &_cudaContext;
+__global__ void initializeIndicesKernel( uint32_t* particleIndices, unsigned int count ){
+    unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-    cudaMalloc(&particleCellIds, simulationParams.particlesCount * sizeof(uint32_t));
+    if (index >= count)
+        return;
+
+    particleIndices[index] = index;
 }
 
 __global__ void updateKernel( ParticlesKernel::CudaParticle* particles, unsigned int count, float deltaTime){
@@ -90,6 +93,55 @@ void ParticlesKernel::generateIDs() {
         simulationParams.bounds.dimensions,
         simulationParams.cellSize,
         particleCellIds
+    );
+}
+
+void ParticlesKernel::initialize(CudaContext& _cudaContext) {
+    cudaContext = &_cudaContext;
+
+    const unsigned int count = static_cast<unsigned int>(simulationParams.particlesCount);
+    const size_t bytes = count * sizeof(uint32_t);
+
+    cudaMalloc(reinterpret_cast<void**>(&particleCellIds), bytes);
+    cudaMalloc(reinterpret_cast<void**>(&sortedCellIds), bytes);
+    cudaMalloc(reinterpret_cast<void**>(&particleIndices), bytes);
+    cudaMalloc(reinterpret_cast<void**>(&sortedParticleIndices), bytes);
+
+    constexpr unsigned int blockSize = 256;
+    const unsigned int gridSize = (count + blockSize - 1) / blockSize;
+
+    initializeIndicesKernel << <gridSize, blockSize, 0, cudaContext->stream >> > ( particleIndices, count );
+
+    cub::DeviceRadixSort::SortPairs(
+        nullptr,
+        sortTempStorageBytes,
+        particleCellIds,
+        sortedCellIds,
+        particleIndices,
+        sortedParticleIndices,
+        count,
+        0,
+        sizeof(uint32_t) * 8,
+        cudaContext->stream
+    );
+
+    cudaMalloc(&sortTempStorage, sortTempStorageBytes);
+}
+
+void ParticlesKernel::sortIDs() {
+    const unsigned int count = static_cast<unsigned int>(simulationParams.particlesCount);
+
+    cub::DeviceRadixSort::SortPairs(
+        sortTempStorage,
+        sortTempStorageBytes,
+        particleCellIds,
+        sortedCellIds,
+        particleIndices,
+        sortedParticleIndices,
+        count,
+        0,
+        sizeof(uint32_t) * 8,
+        cudaContext->stream
     );
 }
 
