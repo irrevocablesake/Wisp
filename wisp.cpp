@@ -46,6 +46,11 @@ class Wisp {
 		glm::vec3 lookAt{ 0.0f, 0, 0.0f };
 	} camera;
 
+	struct SimulationParams {
+		float deltaTime;
+		float gravity = -9.81f;
+	} simulationParams;
+
 	void setupUB(){
 		UBHandle.size = sizeof( UniformData );
 		engine.resourceManager.setupBuffer(UBHandle, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true);
@@ -204,7 +209,7 @@ class Wisp {
 
 			uint64_t currentFrameTime = SDL_GetPerformanceCounter();
 
-			float dt = (float)(currentFrameTime - previousFrameTime) / (float)frequency;
+			simulationParams.deltaTime = (float)(currentFrameTime - previousFrameTime) / (float)frequency;
 			previousFrameTime = currentFrameTime;
 
 			elapsedTime = (float)(currentFrameTime - startFrameTime) / (float)frequency;
@@ -300,7 +305,7 @@ class Wisp {
 
 			cudaInterface.particlesKernel.updateParticles(
 				static_cast<unsigned int>(particles.count()),
-				dt,
+				simulationParams.deltaTime,
 				true
 			);
 

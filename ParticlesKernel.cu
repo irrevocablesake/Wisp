@@ -10,9 +10,12 @@ __global__ void updateKernel( ParticlesKernel::CudaParticle* particles, unsigned
 	if (index >= count)
 		return;
 
-	particles[index].position.x += particles[index].velocity.x * deltaTime;
-	particles[index].position.y += particles[index].velocity.y * deltaTime;
-	particles[index].position.z += particles[index].velocity.z * deltaTime;
+	ParticlesKernel::CudaParticle& particle = particles[index];
+	particle.velocity.y += -9.81f * deltaTime;
+
+	particle.position.x += particle.velocity.x * deltaTime;
+	particle.position.y += particle.velocity.y * deltaTime;
+	particle.position.z += particle.velocity.z * deltaTime;
 }
 
 void ParticlesKernel::launchParticleUpdate(void* buffer, unsigned int count, float deltaTime) {
