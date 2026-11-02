@@ -49,6 +49,14 @@ class Wisp {
 	struct SimulationParams {
 		float deltaTime;
 		float gravity = -9.81f;
+
+		float particleRadius = 0.02;
+		float restitution = 0.8f;
+
+		struct SimulationBounds {
+			glm::vec3 min = glm::vec3(-2.0f);
+			glm::vec3 max = glm::vec3(2.0f);
+		} Roombounds;
 	} simulationParams;
 
 	void setupUB(){
