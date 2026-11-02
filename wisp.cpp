@@ -46,17 +46,24 @@ class Wisp {
 		glm::vec3 lookAt{ 0.0f, 0, 0.0f };
 	} camera;
 
+	float deltaTime = 0.0f;
+
 	struct SimulationParams {
-		float deltaTime;
+		
 		float gravity = -9.81f;
 
 		float particleRadius = 0.02;
 		float restitution = 0.8f;
 
+		int particlesCount = 1000;
+
+		float cellSize = 0.02;
+
 		struct SimulationBounds {
 			glm::vec3 min = glm::vec3(-2.0f);
 			glm::vec3 max = glm::vec3(2.0f);
-		} Roombounds;
+			glm::vec3 dimensions = max - min;
+		} bounds;
 	} simulationParams;
 
 	void setupUB(){
@@ -146,11 +153,10 @@ class Wisp {
 
 	void generateParticles() {
 		particles.initialize(engine);
-		particles.generate(100);
+		particles.generate( simulationParams.particlesCount );
 
 		HANDLE sharedHandle = engine.resourceManager.exportBuffer( particles.PBHandle );
 
-		//USAGE OF RESULT IS PENDING
 		CudaInterface::CudaBuffer result = cudaInterface.cudaContext.importBuffer(
 			sharedHandle,
 			particles.PBHandle.allocationInfo.size,
@@ -161,6 +167,38 @@ class Wisp {
 		cudaInterface.particlesKernel.externalMemory = result.externalMemory;
 	}
 
+	void setupCUDA() {
+		//VERY STUPID BTW, WILL REPLACE LATER
+		cudaInterface.simulationParams.gravity = simulationParams.gravity;
+		cudaInterface.simulationParams.particleRadius = simulationParams.particleRadius;
+		cudaInterface.simulationParams.restitution = simulationParams.restitution;
+		cudaInterface.simulationParams.bounds.max = make_float3( simulationParams.bounds.max.x, simulationParams.bounds.max.y, simulationParams.bounds.max.z );
+		cudaInterface.simulationParams.bounds.min = make_float3( simulationParams.bounds.min.x, simulationParams.bounds.min.y, simulationParams.bounds.min.z);
+		cudaInterface.simulationParams.bounds.dimensions = make_float3(
+			simulationParams.bounds.max.x - simulationParams.bounds.min.x,
+			simulationParams.bounds.max.y - simulationParams.bounds.min.y,
+			simulationParams.bounds.max.z - simulationParams.bounds.min.z
+		);
+		cudaInterface.simulationParams.particlesCount = simulationParams.particlesCount;
+		cudaInterface.simulationParams.cellSize = simulationParams.cellSize;
+
+		//2ND TIME FOR PARTICLES CLASS
+		cudaInterface.particlesKernel.simulationParams.gravity = simulationParams.gravity;
+		cudaInterface.particlesKernel.simulationParams.particleRadius = simulationParams.particleRadius;
+		cudaInterface.particlesKernel.simulationParams.restitution = simulationParams.restitution;
+		cudaInterface.particlesKernel.simulationParams.bounds.max = make_float3(simulationParams.bounds.max.x, simulationParams.bounds.max.y, simulationParams.bounds.max.z);
+		cudaInterface.particlesKernel.simulationParams.bounds.min = make_float3(simulationParams.bounds.min.x, simulationParams.bounds.min.y, simulationParams.bounds.min.z);
+		cudaInterface.particlesKernel.simulationParams.bounds.dimensions = make_float3(
+			simulationParams.bounds.max.x - simulationParams.bounds.min.x,
+			simulationParams.bounds.max.y - simulationParams.bounds.min.y,
+			simulationParams.bounds.max.z - simulationParams.bounds.min.z
+		);
+		cudaInterface.particlesKernel.simulationParams.particlesCount = simulationParams.particlesCount;
+		cudaInterface.particlesKernel.simulationParams.cellSize = simulationParams.cellSize;
+
+		cudaInterface.initialize(engine.vulkanContext.physicalDeviceIF.uuid );
+	}
+
 	void setup() {
 		engine.configure("Wisp", VK_API_VERSION_1_4);
 
@@ -169,7 +207,7 @@ class Wisp {
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 }
 		});
 
-		cudaInterface.initialize(engine.vulkanContext.physicalDeviceIF.uuid);
+		setupCUDA();
 
 		vkToCuda = engine.vulkanContext.createExportableSemaphore();
 		cudaToVk = engine.vulkanContext.createExportableSemaphore();
@@ -177,23 +215,15 @@ class Wisp {
 		vkToCudaHandle = engine.vulkanContext.exportSemaphore(vkToCuda);
 		cudaToVkHandle = engine.vulkanContext.exportSemaphore(cudaToVk);
 
-		cudaInterface.particlesKernel.vkToCuda = cudaInterface.importSemaphore(
-			vkToCudaHandle
-		);
-
-		cudaInterface.particlesKernel.cudaToVk = cudaInterface.importSemaphore(
-			cudaToVkHandle
-		);
+		cudaInterface.particlesKernel.vkToCuda = cudaInterface.importSemaphore( vkToCudaHandle );
+		cudaInterface.particlesKernel.cudaToVk = cudaInterface.importSemaphore( cudaToVkHandle );
 
 		setupUB();
 		generateParticles();
 		generatePipeline();
 
-		cudaInterface.particlesKernel.updateParticles(
-			static_cast<unsigned int>( particles.count() ),
-			0.0f,
-			false
-		);
+		cudaInterface.particlesKernel.generateIDs();
+		cudaInterface.particlesKernel.updateParticles( 0.0f, false );
 	}
 
 	void animate() {
@@ -217,7 +247,7 @@ class Wisp {
 
 			uint64_t currentFrameTime = SDL_GetPerformanceCounter();
 
-			simulationParams.deltaTime = (float)(currentFrameTime - previousFrameTime) / (float)frequency;
+			deltaTime = (float)(currentFrameTime - previousFrameTime) / (float)frequency;
 			previousFrameTime = currentFrameTime;
 
 			elapsedTime = (float)(currentFrameTime - startFrameTime) / (float)frequency;
@@ -311,11 +341,7 @@ class Wisp {
 				engine.getCurrentFrame().frameFence
 			);
 
-			cudaInterface.particlesKernel.updateParticles(
-				static_cast<unsigned int>(particles.count()),
-				simulationParams.deltaTime,
-				true
-			);
+			cudaInterface.particlesKernel.updateParticles( deltaTime, true );
 
 			engine.vulkanContext.currentFrame = (engine.vulkanContext.currentFrame + 1) % engine.vulkanContext.MAX_FRAMES_IN_FLIGHT;
 

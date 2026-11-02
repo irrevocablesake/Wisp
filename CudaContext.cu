@@ -1,8 +1,6 @@
 #include "CudaContext.h"
 
-#include<iostream>
 #include <cuda_runtime.h>
-#include <stdexcept>
 
 using namespace std;
 
