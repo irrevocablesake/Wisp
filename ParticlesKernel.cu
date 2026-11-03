@@ -177,6 +177,117 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext) {
     //An asynchronous NVIDIA CUDA Runtime API function that fills device memory with a given value on a specified stream without blocking the host CPU
     cudaMemsetAsync(cellStart, 0xFF, rangeArraySize, cudaContext->stream);
     cudaMemsetAsync(cellEnd, 0xFF, rangeArraySize, cudaContext->stream);
+
+    cudaMalloc( &neighborCounts, simulationParams.particlesCount * sizeof(uint32_t) );
+}
+
+__global__ void findNeighborsKernel(
+    const ParticlesKernel::CudaParticle* particles,
+    const uint32_t* sortedParticleIndices,
+    const uint32_t* cellStart,
+    const uint32_t* cellEnd,
+    uint32_t* neighborCounts,
+    uint32_t particleCount,
+    float3 gridOrigin,
+    uint3 gridDimensions,
+    float cellSize,
+    float smoothingRadius)
+{
+    uint32_t particleID = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (particleID >= particleCount)
+        return;
+
+    float3 position = make_float3( particles[particleID].position.x, particles[particleID].position.y, particles[particleID].position.z );
+
+    int3 cell = make_int3( 
+        floorf((position.x - gridOrigin.x) / cellSize),
+        floorf((position.y - gridOrigin.y) / cellSize),
+        floorf((position.z - gridOrigin.z) / cellSize)
+    );
+
+    uint32_t neighborCount = 0;
+    float radiusSquared = smoothingRadius * smoothingRadius;
+
+    for (int z = -1; z <= 1; ++z)
+    {
+        for (int y = -1; y <= 1; ++y)
+        {
+            for (int x = -1; x <= 1; ++x)
+            {
+                int cx = cell.x + x;
+                int cy = cell.y + y;
+                int cz = cell.z + z;
+
+                if (cx < 0 || cy < 0 || cz < 0 ||
+                    cx >= static_cast<int>(gridDimensions.x) ||
+                    cy >= static_cast<int>(gridDimensions.y) ||
+                    cz >= static_cast<int>(gridDimensions.z))
+                    continue;
+
+                uint32_t cellID = cx + gridDimensions.x * (cy + gridDimensions.y * cz);
+
+                if (cellStart[cellID] == UINT_MAX)
+                    continue;
+
+                for (uint32_t i = cellStart[cellID]; i < cellEnd[cellID]; ++i) {
+                    uint32_t otherID = sortedParticleIndices[i];
+
+                    if (otherID == particleID)
+                        continue;
+
+                    float3 otherPosition = make_float3(
+                        particles[otherID].position.x,
+                        particles[otherID].position.y,
+                        particles[otherID].position.z
+                    );
+
+                    float3 difference = make_float3(
+                        position.x - otherPosition.x,
+                        position.y - otherPosition.y,
+                        position.z - otherPosition.z
+                    );
+
+                    float distanceSquared = difference.x * difference.x + difference.y * difference.y + difference.z * difference.z;
+
+                    if (distanceSquared < radiusSquared) {
+                        ++neighborCount;
+                    }
+                }
+            }
+        }
+    }
+
+    neighborCounts[particleID] = neighborCount;
+}
+
+void ParticlesKernel::findNeighbors()
+{
+    uint32_t count = simulationParams.particlesCount;
+
+    if (count == 0)
+        return;
+
+    constexpr uint32_t threadsPerBlock = 256;
+
+    uint32_t blocks = (count + threadsPerBlock - 1) / threadsPerBlock;
+
+    findNeighborsKernel << <blocks, threadsPerBlock, 0, cudaContext->stream >> > (
+        static_cast<CudaParticle*>(cudaBuffer),
+        sortedParticleIndices,
+        cellStart,
+        cellEnd,
+        neighborCounts,
+        count,
+        simulationParams.bounds.min,
+        make_uint3(
+            static_cast<uint32_t>(simulationParams.bounds.dimensions.x),
+            static_cast<uint32_t>(simulationParams.bounds.dimensions.y),
+            static_cast<uint32_t>(simulationParams.bounds.dimensions.z)
+        ),
+        simulationParams.cellSize,
+        simulationParams.particleRadius
+    );
 }
 
 void ParticlesKernel::sortIDs() {

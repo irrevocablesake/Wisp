@@ -24,6 +24,10 @@ class ParticlesKernel {
 		uint32_t* cellStart = nullptr;
 		uint32_t* cellEnd = nullptr;
 
+		uint32_t* neighborCounts = nullptr;
+
+		void findNeighbors();
+
 		struct CudaParticle {
 			float4 position;
 			float4 velocity;
