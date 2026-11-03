@@ -12,7 +12,7 @@ class CudaInterface {
 
 		struct SimulationParams {
 			float gravity;
-
+			float viscosityCoefficient;
 			float particleRadius;
 			float restitution;
 			float smoothingRadius;

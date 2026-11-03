@@ -60,6 +60,7 @@ class Wisp {
 		float restitution = 0.8f;
 		float smoothingRadius = 0.08f;
 		float mass = 1.0f;
+		float viscosityCoefficient = 0.1f;
 
 		int particlesCount = 5000;
 
@@ -196,6 +197,8 @@ class Wisp {
 		cudaInterface.simulationParams.cellSize = simulationParams.cellSize;
 		cudaInterface.simulationParams.smoothingRadius = simulationParams.smoothingRadius;
 		cudaInterface.simulationParams.mass = simulationParams.mass;
+		cudaInterface.simulationParams.viscosityCoefficient = simulationParams.viscosityCoefficient;
+
 		cudaInterface.simulationParams.gasConstant = simulationParams.gasConstant;
 
 		cudaInterface.simulationParams.restDensity = simulationParams.restDensity;
@@ -218,6 +221,7 @@ class Wisp {
 		cudaInterface.particlesKernel.simulationParams.smoothingRadius = simulationParams.smoothingRadius;
 		cudaInterface.particlesKernel.simulationParams.mass = simulationParams.mass;
 		cudaInterface.particlesKernel.simulationParams.gasConstant = simulationParams.gasConstant;
+		cudaInterface.particlesKernel.simulationParams.viscosityCoefficient = simulationParams.viscosityCoefficient;
 
 		cudaInterface.particlesKernel.simulationParams.restDensity = simulationParams.restDensity;
 		cudaInterface.particlesKernel.simulationParams.gridDimensions = make_uint3( simulationParams.gridDimensions.x, simulationParams.gridDimensions.y, simulationParams.gridDimensions.z );
@@ -373,6 +377,7 @@ class Wisp {
 			cudaInterface.particlesKernel.calculateDensity();
 			cudaInterface.particlesKernel.calculatePressure();
 			cudaInterface.particlesKernel.calculatePressureForces();
+			cudaInterface.particlesKernel.calculateViscosityForces();
 
 			cudaInterface.particlesKernel.updateParticles( deltaTime, true );
 

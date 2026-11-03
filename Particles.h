@@ -15,6 +15,7 @@ public:
 		float pressure;
 		float padding[2]{};
 		float4 pressureForces;
+		float4 viscosityForces;
 	};
 
 	std::vector< Particle > particles;

@@ -37,6 +37,7 @@ class ParticlesKernel {
 			float pressure;
 			float padding[2]{};
 			float4 pressureForces;
+			float4 viscosityForces;
 		};
 
 		struct SimulationParams {
@@ -47,6 +48,7 @@ class ParticlesKernel {
 			float smoothingRadius;
 			float mass;
 
+			float viscosityCoefficient;
 			float restDensity;
 			float gasConstant;
 
@@ -70,6 +72,7 @@ class ParticlesKernel {
 		void buildCellRanges();
 		void calculatePressure();
 		void calculatePressureForces();
+		void calculateViscosityForces();
 
 		void launchParticleUpdate(void* buffer, float deltaTime );
 };
