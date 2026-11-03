@@ -5,6 +5,7 @@ struct Particle
     float density;
     float pressure;
     float padding[2];
+    float4 pressureForces;
 };
 
 struct VSInput

@@ -372,6 +372,7 @@ class Wisp {
 			//cudaInterface.particlesKernel.findNeighbors();
 			cudaInterface.particlesKernel.calculateDensity();
 			cudaInterface.particlesKernel.calculatePressure();
+			cudaInterface.particlesKernel.calculatePressureForces();
 
 			cudaInterface.particlesKernel.updateParticles( deltaTime, true );
 

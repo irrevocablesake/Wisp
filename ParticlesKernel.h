@@ -36,6 +36,7 @@ class ParticlesKernel {
 			float density;
 			float pressure;
 			float padding[2]{};
+			float4 pressureForces;
 		};
 
 		struct SimulationParams {
@@ -68,6 +69,7 @@ class ParticlesKernel {
 		void sortIDs();
 		void buildCellRanges();
 		void calculatePressure();
+		void calculatePressureForces();
 
 		void launchParticleUpdate(void* buffer, float deltaTime );
 };
