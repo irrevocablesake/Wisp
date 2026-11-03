@@ -1,5 +1,6 @@
 #include "ParticlesKernel.h"
 
+#include<math_constants.h>
 #include<cccl/cub/cub.cuh>
 
 __global__ void initializeIndicesKernel( uint32_t* particleIndices, unsigned int count ){
@@ -11,19 +12,11 @@ __global__ void initializeIndicesKernel( uint32_t* particleIndices, unsigned int
     particleIndices[index] = index;
 }
 
-__global__ void updateKernel( ParticlesKernel::CudaParticle* particles, unsigned int count, float deltaTime){
+__global__ void updateKernel( ParticlesKernel::CudaParticle* particles, unsigned int count, float deltaTime, float gravity, float3 boundsMin, float3 boundsMax, float radius, float restitution ){
 	unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (index >= count )
 		return;
-
-	//CHANGE LATER TO READ FROM BUFFER INTEROP
-	constexpr float gravity = -9.81f;
-	constexpr float radius = 0.02f;
-	constexpr float restitution = 0.8f;
-
-	constexpr float3 boundsMin = { -2.0f, -2.0f, -2.0f };
-	constexpr float3 boundsMax = { 2.0f,  2.0f,  2.0f };
 
 	ParticlesKernel::CudaParticle& particle = particles[index];
 	particle.velocity.y += gravity * deltaTime;
@@ -60,7 +53,7 @@ __global__ void updateKernel( ParticlesKernel::CudaParticle* particles, unsigned
     }
 }
 
-__global__ void generateIDsKernel( const ParticlesKernel::CudaParticle* particles, unsigned int count, float3 gridOrigin, float3 gridDimensions, float cellSize,  uint32_t* particleCellIds ){
+__global__ void generateIDsKernel( const ParticlesKernel::CudaParticle* particles, unsigned int count, float3 gridOrigin, uint3 gridDimensions, float cellSize,  uint32_t* particleCellIds ){
     unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index >= count )
@@ -99,6 +92,144 @@ __global__ void buildCellRangesKernel( const uint32_t* sortedCellIds, uint32_t* 
     }
 }
 
+//NOTE: Later i think we either can remove this function or modify it to make it work with calculateDensityKernel
+__device__ float poly6Kernel(float distanceSquared, float smoothingRadius)
+{
+    float h2 = smoothingRadius * smoothingRadius;
+
+    if (distanceSquared >= h2)
+        return 0.0f;
+
+    float h9 = powf(smoothingRadius, 9.0f);
+
+    float coefficient = 315.0f / (64.0f * CUDART_PI_F * h9);
+
+    float difference = h2 - distanceSquared;
+
+    return coefficient * difference * difference * difference;
+}
+
+//NOTE: We can modify this function to use findNeighbours - just quite a repeattion of code, will fix later - bored for this now
+__global__ void calculateDensityKernel(
+    ParticlesKernel::CudaParticle* particles,
+    const uint32_t* sortedParticleIndices,
+    const uint32_t* cellStart,
+    const uint32_t* cellEnd,
+    uint32_t particleCount,
+    float particleMass,
+    float smoothingRadius,
+    float3 gridOrigin,
+    uint3 gridDimensions,
+    float cellSize)
+{
+    uint32_t particleID = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (particleID >= particleCount)
+        return;
+
+    float3 position = make_float3(
+        particles[particleID].position.x,
+        particles[particleID].position.y,
+        particles[particleID].position.z
+    );
+
+    float density = 0.0f;
+
+    float smoothingRadiusSquared = smoothingRadius * smoothingRadius;
+    float smoothingRadius9 = powf(smoothingRadius, 9.0f);
+    float poly6Coefficient =
+        315.0f / (64.0f * CUDART_PI_F * smoothingRadius9);
+
+    int3 cell = make_int3(
+        static_cast<int>(floorf((position.x - gridOrigin.x) / cellSize)),
+        static_cast<int>(floorf((position.y - gridOrigin.y) / cellSize)),
+        static_cast<int>(floorf((position.z - gridOrigin.z) / cellSize))
+    );
+
+    for (int z = -1; z <= 1; ++z)
+    {
+        for (int y = -1; y <= 1; ++y)
+        {
+            for (int x = -1; x <= 1; ++x)
+            {
+                int3 neighborCell = make_int3(
+                    cell.x + x,
+                    cell.y + y,
+                    cell.z + z
+                );
+
+                if (neighborCell.x < 0 || neighborCell.x >= gridDimensions.x ||
+                    neighborCell.y < 0 || neighborCell.y >= gridDimensions.y ||
+                    neighborCell.z < 0 || neighborCell.z >= gridDimensions.z)
+                {
+                    continue;
+                }
+
+                uint32_t cellID = neighborCell.x + gridDimensions.x * (neighborCell.y + gridDimensions.y * neighborCell.z);
+
+                if (cellStart[cellID] == UINT_MAX)
+                    continue;
+
+                for (uint32_t i = cellStart[cellID]; i < cellEnd[cellID]; ++i) {
+                    uint32_t otherID = sortedParticleIndices[i];
+
+                    float3 otherPosition = make_float3(
+                        particles[otherID].position.x,
+                        particles[otherID].position.y,
+                        particles[otherID].position.z
+                    );
+
+                    float3 difference = make_float3(
+                        position.x - otherPosition.x,
+                        position.y - otherPosition.y,
+                        position.z - otherPosition.z
+                    );
+
+                    float distanceSquared =
+                        difference.x * difference.x +
+                        difference.y * difference.y +
+                        difference.z * difference.z;
+
+                    if (distanceSquared < smoothingRadiusSquared) {
+                        float differenceH = smoothingRadiusSquared - distanceSquared;
+
+                        float weight = poly6Coefficient *
+                            differenceH * differenceH * differenceH;
+
+                        density += particleMass * weight;
+                    }
+                }
+            }
+        }
+    }
+
+    particles[particleID].density = density;
+}
+
+void ParticlesKernel::calculateDensity() {
+
+    constexpr uint32_t threadsPerBlock = 256;
+
+    uint32_t blocks = ( simulationParams.particlesCount + threadsPerBlock - 1) / threadsPerBlock;
+    calculateDensityKernel << <
+            ( simulationParams.particlesCount + threadsPerBlock - 1) / threadsPerBlock,
+            threadsPerBlock,
+            0,
+            cudaContext->stream
+        >> > (
+            static_cast<CudaParticle*>(cudaBuffer),
+            sortedParticleIndices,
+            cellStart,
+            cellEnd,
+            simulationParams.particlesCount,
+            simulationParams.mass,
+            simulationParams.smoothingRadius,
+            simulationParams.bounds.min,
+            simulationParams.gridDimensions,
+            simulationParams.cellSize
+        );
+}
+
 void ParticlesKernel::buildCellRanges()
 {
     const uint32_t count = simulationParams.particlesCount;
@@ -109,7 +240,8 @@ void ParticlesKernel::buildCellRanges()
     const uint32_t threadsPerBlock = 256;
     const uint32_t blocks = (count + threadsPerBlock - 1) / threadsPerBlock;
 
-    size_t totalCells = static_cast<size_t>(simulationParams.bounds.dimensions.x) * static_cast<size_t>(simulationParams.bounds.dimensions.y) * static_cast<size_t>(simulationParams.bounds.dimensions.z);
+    size_t totalCells = static_cast<size_t>(simulationParams.gridDimensions.x) * static_cast<size_t>(simulationParams.gridDimensions.y) * static_cast<size_t>(simulationParams.gridDimensions.z);
+
     size_t arraySize = totalCells * sizeof(uint32_t);
 
     cudaMemsetAsync(cellStart, 0xFF, arraySize, cudaContext->stream);
@@ -131,7 +263,7 @@ void ParticlesKernel::generateIDs() {
         static_cast<CudaParticle*>(cudaBuffer),
         simulationParams.particlesCount,
         simulationParams.bounds.min,
-        simulationParams.bounds.dimensions,
+        simulationParams.gridDimensions,
         simulationParams.cellSize,
         particleCellIds
     );
@@ -168,7 +300,7 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext) {
 
     cudaMalloc(&sortTempStorage, sortTempStorageBytes);
 
-    size_t totalCells = static_cast<size_t>(simulationParams.bounds.dimensions.x) * static_cast<size_t>(simulationParams.bounds.dimensions.y) * static_cast<size_t>(simulationParams.bounds.dimensions.z);
+    size_t totalCells = static_cast<size_t>(simulationParams.gridDimensions.x) * static_cast<size_t>(simulationParams.gridDimensions.y) * static_cast<size_t>(simulationParams.gridDimensions.z);
     size_t rangeArraySize = totalCells * sizeof(uint32_t);
 
     cudaMalloc(&cellStart, rangeArraySize);
@@ -281,12 +413,12 @@ void ParticlesKernel::findNeighbors()
         count,
         simulationParams.bounds.min,
         make_uint3(
-            static_cast<uint32_t>(simulationParams.bounds.dimensions.x),
-            static_cast<uint32_t>(simulationParams.bounds.dimensions.y),
-            static_cast<uint32_t>(simulationParams.bounds.dimensions.z)
+            static_cast<uint32_t>(simulationParams.gridDimensions.x),
+            static_cast<uint32_t>(simulationParams.gridDimensions.y),
+            static_cast<uint32_t>(simulationParams.gridDimensions.z)
         ),
         simulationParams.cellSize,
-        simulationParams.particleRadius
+        simulationParams.smoothingRadius
     );
 }
 
@@ -310,7 +442,7 @@ void ParticlesKernel::sortIDs() {
 void ParticlesKernel::launchParticleUpdate(void* buffer, float deltaTime) {
 	constexpr int blockSize = 256;
 	unsigned int gridSize = ( simulationParams.particlesCount + blockSize - 1) / blockSize;
-	updateKernel << <gridSize, blockSize, 0, cudaContext->stream >> > ( static_cast<CudaParticle*>(buffer), simulationParams.particlesCount, deltaTime );
+	updateKernel << <gridSize, blockSize, 0, cudaContext->stream >> > ( static_cast<CudaParticle*>(buffer), simulationParams.particlesCount, deltaTime, simulationParams.gravity, simulationParams.bounds.min, simulationParams.bounds.max, simulationParams.particleRadius, simulationParams.restitution  );
 }
 
 void ParticlesKernel::updateParticles( float deltaTime, bool waitForVulkan) {

@@ -26,11 +26,15 @@ class ParticlesKernel {
 
 		uint32_t* neighborCounts = nullptr;
 
+		void calculateDensity();
+
 		void findNeighbors();
 
 		struct CudaParticle {
 			float4 position;
 			float4 velocity;
+			float density;
+			float padding[3]{};
 		};
 
 		struct SimulationParams {
@@ -38,6 +42,8 @@ class ParticlesKernel {
 
 			float particleRadius;
 			float restitution;
+			float smoothingRadius;
+			float mass;
 
 			int particlesCount;
 			float cellSize;
@@ -47,6 +53,8 @@ class ParticlesKernel {
 				float3 max;
 				float3 dimensions;
 			} bounds;
+
+			uint3 gridDimensions;
 		} simulationParams;
 
 		void initialize( CudaContext &_cudaContext );

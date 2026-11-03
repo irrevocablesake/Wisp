@@ -7,6 +7,10 @@
 
 #include<iostream>
 
+//NOTE: I think we should also add the ability to dump data from shader / cuda and read it in CPU 
+// We may already be able to do that through interop but still
+
+//NOTE: Should add the checks for density validation
 class Wisp {
 
 	//Engine Initialization
@@ -41,9 +45,9 @@ class Wisp {
 	} uniformData;
 
 	struct Camera {
-		glm::vec3 position{ 4.0f, 4, 4.0f };
+		glm::vec3 position{ 3.0f, 2.0f, 3.0f };
 		glm::vec3 cameraUp{ 0, 1, 0 };
-		glm::vec3 lookAt{ 0.0f, 0, 0.0f };
+		glm::vec3 lookAt{ 0.0f, -2.0f, 0.0f };
 	} camera;
 
 	float deltaTime = 0.0f;
@@ -52,18 +56,24 @@ class Wisp {
 		
 		float gravity = -9.81f;
 
-		float particleRadius = 0.02;
+		float particleRadius = 0.02f;
 		float restitution = 0.8f;
+		float smoothingRadius = 0.08f;
+		float mass = 1.0f;
 
-		int particlesCount = 1000;
+		int particlesCount = 5000;
 
-		float cellSize = 0.02;
+		float cellSize = 0.04f;
 
 		struct SimulationBounds {
 			glm::vec3 min = glm::vec3(-2.0f);
 			glm::vec3 max = glm::vec3(2.0f);
 			glm::vec3 dimensions = max - min;
 		} bounds;
+
+		glm::uvec3 gridDimensions = glm::uvec3(
+			glm::ceil( bounds.dimensions / cellSize)
+		);
 	} simulationParams;
 
 	void setupUB(){
@@ -181,6 +191,9 @@ class Wisp {
 		);
 		cudaInterface.simulationParams.particlesCount = simulationParams.particlesCount;
 		cudaInterface.simulationParams.cellSize = simulationParams.cellSize;
+		cudaInterface.simulationParams.smoothingRadius = simulationParams.smoothingRadius;
+		cudaInterface.simulationParams.mass = simulationParams.mass;
+		cudaInterface.simulationParams.gridDimensions = make_uint3(simulationParams.gridDimensions.x, simulationParams.gridDimensions.y, simulationParams.gridDimensions.z);
 
 		//2ND TIME FOR PARTICLES CLASS
 		cudaInterface.particlesKernel.simulationParams.gravity = simulationParams.gravity;
@@ -195,6 +208,9 @@ class Wisp {
 		);
 		cudaInterface.particlesKernel.simulationParams.particlesCount = simulationParams.particlesCount;
 		cudaInterface.particlesKernel.simulationParams.cellSize = simulationParams.cellSize;
+		cudaInterface.particlesKernel.simulationParams.smoothingRadius = simulationParams.smoothingRadius;
+		cudaInterface.particlesKernel.simulationParams.mass = simulationParams.mass;
+		cudaInterface.particlesKernel.simulationParams.gridDimensions = make_uint3( simulationParams.gridDimensions.x, simulationParams.gridDimensions.y, simulationParams.gridDimensions.z );
 
 		cudaInterface.initialize(engine.vulkanContext.physicalDeviceIF.uuid );
 	}
@@ -222,10 +238,6 @@ class Wisp {
 		generateParticles();
 		generatePipeline();
 
-		cudaInterface.particlesKernel.generateIDs();
-		cudaInterface.particlesKernel.sortIDs();
-		cudaInterface.particlesKernel.buildCellRanges();
-		cudaInterface.particlesKernel.findNeighbors();
 		cudaInterface.particlesKernel.updateParticles(0.0f, false);
 	}
 
@@ -343,6 +355,12 @@ class Wisp {
 				&submitInfo,
 				engine.getCurrentFrame().frameFence
 			);
+
+			cudaInterface.particlesKernel.generateIDs();
+			cudaInterface.particlesKernel.sortIDs();
+			cudaInterface.particlesKernel.buildCellRanges();
+			//cudaInterface.particlesKernel.findNeighbors();
+			cudaInterface.particlesKernel.calculateDensity();
 
 			cudaInterface.particlesKernel.updateParticles( deltaTime, true );
 

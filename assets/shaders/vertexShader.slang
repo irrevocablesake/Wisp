@@ -2,6 +2,8 @@ struct Particle
 {
     float4 position;
     float4 velocity;
+    float density;
+    float padding[3];
 };
 
 struct VSInput
@@ -12,6 +14,7 @@ struct VSInput
 struct VSOutput
 {
     float4 position : SV_Position;
+    float density : TEXCOORD0;
 };
 
 struct UniformData {
@@ -40,6 +43,7 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     float4 clipPosition = mul(uniformData.projection, viewPosition);
 
     output.position = clipPosition;
+    output.density = particles[instanceID].density;
 
     return output;
 }

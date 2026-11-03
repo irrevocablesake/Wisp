@@ -15,8 +15,10 @@ class CudaInterface {
 
 			float particleRadius;
 			float restitution;
+			float smoothingRadius;
 
 			int particlesCount;
+			float mass;
 			float cellSize;
 
 			struct SimulationBounds {
@@ -24,6 +26,8 @@ class CudaInterface {
 				float3 max;
 				float3 dimensions;
 			} bounds;
+
+			uint3 gridDimensions;
 		} simulationParams;
 
 	public:

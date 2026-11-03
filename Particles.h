@@ -11,6 +11,8 @@ public:
 	struct Particle {
 		glm::vec4 position{};
 		glm::vec4 velocity{};
+		float density;
+		float padding[3]{};
 	};
 
 	std::vector< Particle > particles;
@@ -43,6 +45,8 @@ public:
 				engine->generateRandomNumber(-0.2, 0.2),
 				0.0f
 			);
+
+			p.density = 0.0f;
 		}
 
 		PBHandle.size = particles.size() * sizeof(Particle);
