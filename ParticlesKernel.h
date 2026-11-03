@@ -34,7 +34,8 @@ class ParticlesKernel {
 			float4 position;
 			float4 velocity;
 			float density;
-			float padding[3]{};
+			float pressure;
+			float padding[2]{};
 		};
 
 		struct SimulationParams {
@@ -44,6 +45,9 @@ class ParticlesKernel {
 			float restitution;
 			float smoothingRadius;
 			float mass;
+
+			float restDensity;
+			float gasConstant;
 
 			int particlesCount;
 			float cellSize;
@@ -63,6 +67,7 @@ class ParticlesKernel {
 		void generateIDs();
 		void sortIDs();
 		void buildCellRanges();
+		void calculatePressure();
 
 		void launchParticleUpdate(void* buffer, float deltaTime );
 };

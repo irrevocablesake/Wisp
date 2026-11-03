@@ -3,7 +3,8 @@ struct Particle
     float4 position;
     float4 velocity;
     float density;
-    float padding[3];
+    float pressure;
+    float padding[2];
 };
 
 struct VSInput

@@ -63,6 +63,9 @@ class Wisp {
 
 		int particlesCount = 5000;
 
+		float restDensity = 0.0f;
+		float gasConstant = 0.0f;
+
 		float cellSize = 0.04f;
 
 		struct SimulationBounds {
@@ -193,6 +196,10 @@ class Wisp {
 		cudaInterface.simulationParams.cellSize = simulationParams.cellSize;
 		cudaInterface.simulationParams.smoothingRadius = simulationParams.smoothingRadius;
 		cudaInterface.simulationParams.mass = simulationParams.mass;
+		cudaInterface.simulationParams.gasConstant = simulationParams.gasConstant;
+
+		cudaInterface.simulationParams.restDensity = simulationParams.restDensity;
+
 		cudaInterface.simulationParams.gridDimensions = make_uint3(simulationParams.gridDimensions.x, simulationParams.gridDimensions.y, simulationParams.gridDimensions.z);
 
 		//2ND TIME FOR PARTICLES CLASS
@@ -210,6 +217,9 @@ class Wisp {
 		cudaInterface.particlesKernel.simulationParams.cellSize = simulationParams.cellSize;
 		cudaInterface.particlesKernel.simulationParams.smoothingRadius = simulationParams.smoothingRadius;
 		cudaInterface.particlesKernel.simulationParams.mass = simulationParams.mass;
+		cudaInterface.particlesKernel.simulationParams.gasConstant = simulationParams.gasConstant;
+
+		cudaInterface.particlesKernel.simulationParams.restDensity = simulationParams.restDensity;
 		cudaInterface.particlesKernel.simulationParams.gridDimensions = make_uint3( simulationParams.gridDimensions.x, simulationParams.gridDimensions.y, simulationParams.gridDimensions.z );
 
 		cudaInterface.initialize(engine.vulkanContext.physicalDeviceIF.uuid );
@@ -361,6 +371,7 @@ class Wisp {
 			cudaInterface.particlesKernel.buildCellRanges();
 			//cudaInterface.particlesKernel.findNeighbors();
 			cudaInterface.particlesKernel.calculateDensity();
+			cudaInterface.particlesKernel.calculatePressure();
 
 			cudaInterface.particlesKernel.updateParticles( deltaTime, true );
 

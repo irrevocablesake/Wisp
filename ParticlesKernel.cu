@@ -206,6 +206,39 @@ __global__ void calculateDensityKernel(
     particles[particleID].density = density;
 }
 
+__global__ void calculatePressureKernel(
+    ParticlesKernel::CudaParticle* particles,
+    int particleCount,
+    float restDensity,
+    float gasConstant){
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i >= particleCount)
+        return;
+
+    float density = particles[i].density;
+
+    particles[i].pressure = gasConstant * fmaxf(density - restDensity, 0.0f);
+}
+
+void ParticlesKernel::calculatePressure(){
+    constexpr uint32_t BLOCK_SIZE = 256;
+
+    uint32_t gridSize = ( simulationParams.particlesCount + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
+    calculatePressureKernel << <
+        gridSize,
+        BLOCK_SIZE,
+        0,
+        cudaContext->stream
+     >> > (
+            static_cast<CudaParticle*>(cudaBuffer),
+            simulationParams.particlesCount,
+            simulationParams.restDensity,
+            simulationParams.gasConstant
+         );
+}
+
 void ParticlesKernel::calculateDensity() {
 
     constexpr uint32_t threadsPerBlock = 256;

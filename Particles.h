@@ -12,7 +12,8 @@ public:
 		glm::vec4 position{};
 		glm::vec4 velocity{};
 		float density;
-		float padding[3]{};
+		float pressure;
+		float padding[2]{};
 	};
 
 	std::vector< Particle > particles;

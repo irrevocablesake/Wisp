@@ -21,6 +21,9 @@ class CudaInterface {
 			float mass;
 			float cellSize;
 
+			float restDensity;
+			float gasConstant;
+
 			struct SimulationBounds {
 				float3 min;
 				float3 max;
