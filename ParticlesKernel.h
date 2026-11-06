@@ -13,6 +13,9 @@ class ParticlesKernel {
 		cudaExternalMemory_t externalMemory{};
 		void* cudaBuffer = nullptr;
 
+		cudaExternalMemory_t BPexternalMemory{};
+		void* BPcudaBuffer = nullptr;
+
 		uint32_t* particleCellIds;
 		uint32_t* sortedCellIds = nullptr;
 		uint32_t* particleIndices = nullptr;

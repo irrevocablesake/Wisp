@@ -52,6 +52,7 @@ class Wisp {
 
 	float deltaTime = 0.0f;
 
+	//Please add spacing param, and see how the radius particle relation with it
 	struct SimulationParams {
 		
 		float gravity = -9.81f;
@@ -168,17 +169,29 @@ class Wisp {
 	void generateParticles() {
 		particles.initialize(engine);
 		particles.generate( simulationParams.particlesCount );
+		particles.generateBoundaryParticles(simulationParams.bounds.min, simulationParams.bounds.max);
 
-		HANDLE sharedHandle = engine.resourceManager.exportBuffer( particles.PBHandle );
+		HANDLE PsharedHandle = engine.resourceManager.exportBuffer( particles.PBHandle );
 
-		CudaInterface::CudaBuffer result = cudaInterface.cudaContext.importBuffer(
-			sharedHandle,
+		CudaInterface::CudaBuffer PResult = cudaInterface.cudaContext.importBuffer(
+			PsharedHandle,
 			particles.PBHandle.allocationInfo.size,
 			particles.PBHandle.size
 		);
 
-		cudaInterface.particlesKernel.cudaBuffer = result.devicePointer;
-		cudaInterface.particlesKernel.externalMemory = result.externalMemory;
+		cudaInterface.particlesKernel.cudaBuffer = PResult.devicePointer;
+		cudaInterface.particlesKernel.externalMemory = PResult.externalMemory;
+
+		HANDLE BPsharedHandle = engine.resourceManager.exportBuffer(particles.BPHandle);
+
+		CudaInterface::CudaBuffer BPResult = cudaInterface.cudaContext.importBuffer(
+			BPsharedHandle,
+			particles.BPHandle.allocationInfo.size,
+			particles.BPHandle.size
+		);
+
+		cudaInterface.particlesKernel.BPcudaBuffer = BPResult.devicePointer;
+		cudaInterface.particlesKernel.BPexternalMemory = BPResult.externalMemory;
 	}
 
 	void setupCUDA() {
@@ -233,7 +246,7 @@ class Wisp {
 		engine.configure("Wisp", VK_API_VERSION_1_4);
 
 		engine.resourceManager.setupDescriptorPool({
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 },
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 }
 		});
 
@@ -327,7 +340,7 @@ class Wisp {
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipelineLayout, 0, 1, &particles.PBDescriptorSet, 0, nullptr);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipelineLayout, 1, 1, &UBDescriptorSet, 0, nullptr);
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
-			vkCmdDrawIndexed(commandBuffer, particles.particleGeometry.indices.size(), particles.count(), 0, 0, 0);
+			vkCmdDrawIndexed(commandBuffer, particles.particleGeometry.indices.size(), particles.PCount(), 0, 0, 0);
 			vkCmdEndRendering(commandBuffer);
 			engine.barrier.transitionImageFromColorAttachmentToPresent(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
 			
