@@ -43,8 +43,15 @@ class ParticlesKernel {
 			float4 viscosityForces;
 		};
 
+		struct BoundaryParticle {
+			float4 position{};
+		};
+
 		struct SimulationParams {
 			float gravity;
+
+			uint32_t boundaryParticlesCount;
+			float boundaryParticleMass;
 
 			float particleRadius;
 			float restitution;
@@ -66,6 +73,21 @@ class ParticlesKernel {
 
 			uint3 gridDimensions;
 		} simulationParams;
+
+		uint32_t* boundaryParticleCellIds = nullptr;
+		uint32_t* sortedBoundaryCellIds = nullptr;
+		uint32_t* boundaryParticleIndices = nullptr;
+		uint32_t* sortedBoundaryParticleIndices = nullptr;
+
+		uint32_t* boundaryCellStart = nullptr;
+		uint32_t* boundaryCellEnd = nullptr;
+
+		void* boundarySortTempStorage = nullptr;
+		size_t boundarySortTempStorageBytes = 0;
+
+		float3 boundaryGridOrigin{};
+		uint3 boundaryGridDimensions{};
+		void initializeBoundaryGrid();
 
 		void initialize( CudaContext &_cudaContext );
 

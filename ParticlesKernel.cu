@@ -109,18 +109,140 @@ __device__ float poly6Kernel(float distanceSquared, float smoothingRadius)
     return coefficient * difference * difference * difference;
 }
 
-//NOTE: We can modify this function to use findNeighbours - just quite a repeattion of code, will fix later - bored for this now
-__global__ void calculateDensityKernel(
-    ParticlesKernel::CudaParticle* particles,
-    const uint32_t* sortedParticleIndices,
-    const uint32_t* cellStart,
-    const uint32_t* cellEnd,
-    uint32_t particleCount,
-    float particleMass,
+__device__ float calculateBoundaryDensityContribution(
+    float3 position,
+    const ParticlesKernel::BoundaryParticle* boundaryParticles,
+    const uint32_t* sortedBoundaryParticleIndices,
+    const uint32_t* boundaryCellStart,
+    const uint32_t* boundaryCellEnd,
+    float boundaryParticleMass,
     float smoothingRadius,
     float3 gridOrigin,
     uint3 gridDimensions,
     float cellSize)
+{
+    float density = 0.0f;
+
+    const float h2 = smoothingRadius * smoothingRadius;
+    const float h9 = powf(smoothingRadius, 9.0f);
+
+    const float poly6Coefficient =
+        315.0f / (64.0f * CUDART_PI_F * h9);
+
+    int3 cell = make_int3(
+        static_cast<int>(floorf((position.x - gridOrigin.x) / cellSize)),
+        static_cast<int>(floorf((position.y - gridOrigin.y) / cellSize)),
+        static_cast<int>(floorf((position.z - gridOrigin.z) / cellSize))
+    );
+
+    cell.x = max(0, min(cell.x, static_cast<int>(gridDimensions.x) - 1));
+    cell.y = max(0, min(cell.y, static_cast<int>(gridDimensions.y) - 1));
+    cell.z = max(0, min(cell.z, static_cast<int>(gridDimensions.z) - 1));
+
+    const int searchRadius =
+        static_cast<int>(ceilf(smoothingRadius / cellSize));
+
+    for (int z = -searchRadius; z <= searchRadius; ++z)
+    {
+        for (int y = -searchRadius; y <= searchRadius; ++y)
+        {
+            for (int x = -searchRadius; x <= searchRadius; ++x)
+            {
+                int3 neighbourCell = make_int3(
+                    cell.x + x,
+                    cell.y + y,
+                    cell.z + z
+                );
+
+                if (neighbourCell.x < 0 ||
+                    neighbourCell.y < 0 ||
+                    neighbourCell.z < 0 ||
+                    neighbourCell.x >= static_cast<int>(gridDimensions.x) ||
+                    neighbourCell.y >= static_cast<int>(gridDimensions.y) ||
+                    neighbourCell.z >= static_cast<int>(gridDimensions.z))
+                {
+                    continue;
+                }
+
+                const uint32_t cellID =
+                    neighbourCell.x +
+                    gridDimensions.x *
+                    (neighbourCell.y +
+                        gridDimensions.y * neighbourCell.z);
+
+                const uint32_t start = boundaryCellStart[cellID];
+
+                if (start == UINT_MAX)
+                    continue;
+
+                const uint32_t end = boundaryCellEnd[cellID];
+
+                for (uint32_t i = start; i < end; ++i)
+                {
+                    const uint32_t boundaryID =
+                        sortedBoundaryParticleIndices[i];
+
+                    const float3 boundaryPosition = make_float3(
+                        boundaryParticles[boundaryID].position.x,
+                        boundaryParticles[boundaryID].position.y,
+                        boundaryParticles[boundaryID].position.z
+                    );
+
+                    const float dx = position.x - boundaryPosition.x;
+                    const float dy = position.y - boundaryPosition.y;
+                    const float dz = position.z - boundaryPosition.z;
+
+                    const float distanceSquared =
+                        dx * dx + dy * dy + dz * dz;
+
+                    if (distanceSquared >= h2)
+                        continue;
+
+                    const float differenceH = h2 - distanceSquared;
+
+                    const float weight =
+                        poly6Coefficient *
+                        differenceH * differenceH * differenceH;
+
+                    density += boundaryParticleMass * weight;
+                }
+            }
+        }
+    }
+
+    return density;
+}
+
+//NOTE: We can modify this function to use findNeighbours - just quite a repeattion of code, will fix later - bored for this now
+__global__ void calculateDensityKernel(
+    ParticlesKernel::CudaParticle* particles,
+
+    const ParticlesKernel::BoundaryParticle* boundaryParticles,
+    uint32_t boundaryParticlesCount,
+
+    const uint32_t* sortedParticleIndices,
+    const uint32_t* cellStart,
+    const uint32_t* cellEnd,
+
+    const uint32_t* sortedBoundaryParticleIndices,
+    const uint32_t* boundaryCellStart,
+    const uint32_t* boundaryCellEnd,
+
+    uint32_t particleCount,
+
+    float particleMass,
+    float boundaryParticleMass,
+
+    float smoothingRadius,
+    float restDensity,
+    float gasConstant,
+
+    float3 gridOrigin,
+    uint3 gridDimensions,
+    float cellSize,
+
+    float3 boundaryGridOrigin,
+    uint3 boundaryGridDimensions)
 {
     uint32_t particleID = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -203,6 +325,22 @@ __global__ void calculateDensityKernel(
         }
     }
 
+    if (boundaryParticlesCount > 0)
+    {
+        density += calculateBoundaryDensityContribution(
+            position,
+            boundaryParticles,
+            sortedBoundaryParticleIndices,
+            boundaryCellStart,
+            boundaryCellEnd,
+            boundaryParticleMass,
+            smoothingRadius,
+            boundaryGridOrigin,
+            boundaryGridDimensions,
+            cellSize
+        );
+    }
+
     particles[particleID].density = density;
 }
 
@@ -219,6 +357,169 @@ __global__ void calculatePressureKernel(
     float density = particles[i].density;
 
     particles[i].pressure = gasConstant * fmaxf(density - restDensity, 0.0f);
+}
+
+__global__ void generateBoundaryIDsKernel(
+    const ParticlesKernel::BoundaryParticle* boundaryParticles,
+    uint32_t boundaryParticleCount,
+    float3 gridOrigin,
+    uint3 gridDimensions,
+    float cellSize,
+    uint32_t* boundaryParticleCellIds)
+{
+    uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (index >= boundaryParticleCount)
+        return;
+
+    float3 position = make_float3(
+        boundaryParticles[index].position.x,
+        boundaryParticles[index].position.y,
+        boundaryParticles[index].position.z
+    );
+
+    int3 cell = make_int3(
+        static_cast<int>(floorf((position.x - gridOrigin.x) / cellSize)),
+        static_cast<int>(floorf((position.y - gridOrigin.y) / cellSize)),
+        static_cast<int>(floorf((position.z - gridOrigin.z) / cellSize))
+    );
+
+    cell.x = max(0, min(cell.x, static_cast<int>(gridDimensions.x) - 1));
+    cell.y = max(0, min(cell.y, static_cast<int>(gridDimensions.y) - 1));
+    cell.z = max(0, min(cell.z, static_cast<int>(gridDimensions.z) - 1));
+
+    boundaryParticleCellIds[index] =
+        cell.x + gridDimensions.x * (cell.y + gridDimensions.y * cell.z);
+}
+
+void ParticlesKernel::initializeBoundaryGrid()
+{
+    const uint32_t count = simulationParams.boundaryParticlesCount;
+
+    if (count == 0)
+        return;
+
+    constexpr uint32_t BLOCK_SIZE = 256;
+    constexpr float BOUNDARY_SPACING = 0.04f;
+
+    // The outermost boundary layer extends two spacings beyond the room.
+    // Add one extra spacing as padding for safe grid indexing.
+    constexpr float PADDING = 3.0f * BOUNDARY_SPACING;
+
+    float3 boundsMin = simulationParams.bounds.min;
+    float3 boundsMax = simulationParams.bounds.max;
+
+    boundaryGridOrigin = make_float3(
+        boundsMin.x - PADDING,
+        boundsMin.y - PADDING,
+        boundsMin.z - PADDING
+    );
+
+    boundaryGridDimensions = make_uint3(
+        static_cast<uint32_t>(ceilf(
+            (boundsMax.x - boundsMin.x + 2.0f * PADDING) /
+            simulationParams.cellSize)) + 1,
+
+        static_cast<uint32_t>(ceilf(
+            (boundsMax.y - boundsMin.y + 2.0f * PADDING) /
+            simulationParams.cellSize)) + 1,
+
+        static_cast<uint32_t>(ceilf(
+            (boundsMax.z - boundsMin.z + 2.0f * PADDING) /
+            simulationParams.cellSize)) + 1
+    );
+
+    const size_t particleBytes = count * sizeof(uint32_t);
+
+    const size_t totalCells =
+        static_cast<size_t>(boundaryGridDimensions.x) *
+        boundaryGridDimensions.y *
+        boundaryGridDimensions.z;
+
+    const size_t cellBytes = totalCells * sizeof(uint32_t);
+
+    // Allocate boundary particle sorting arrays.
+    cudaMalloc(&boundaryParticleCellIds, particleBytes);
+    cudaMalloc(&sortedBoundaryCellIds, particleBytes);
+    cudaMalloc(&boundaryParticleIndices, particleBytes);
+    cudaMalloc(&sortedBoundaryParticleIndices, particleBytes);
+
+    // Allocate boundary cell ranges.
+    cudaMalloc(&boundaryCellStart, cellBytes);
+    cudaMalloc(&boundaryCellEnd, cellBytes);
+
+    // Initialize original boundary particle indices.
+    const uint32_t blocks = (count + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
+    initializeIndicesKernel << <blocks, BLOCK_SIZE, 0, cudaContext->stream >> > (
+        boundaryParticleIndices,
+        count
+        );
+
+    generateBoundaryIDsKernel << <blocks, BLOCK_SIZE, 0, cudaContext->stream >> > (
+        static_cast<const BoundaryParticle*>(BPcudaBuffer),
+        count,
+        boundaryGridOrigin,
+        boundaryGridDimensions,
+        simulationParams.cellSize,
+        boundaryParticleCellIds
+        );
+
+    // Determine CUB temporary storage requirements.
+    cub::DeviceRadixSort::SortPairs(
+        nullptr,
+        boundarySortTempStorageBytes,
+        boundaryParticleCellIds,
+        sortedBoundaryCellIds,
+        boundaryParticleIndices,
+        sortedBoundaryParticleIndices,
+        count,
+        0,
+        sizeof(uint32_t) * 8,
+        cudaContext->stream
+    );
+
+    cudaMalloc(
+        &boundarySortTempStorage,
+        boundarySortTempStorageBytes
+    );
+
+    // Sort boundary particles by cell ID.
+    cub::DeviceRadixSort::SortPairs(
+        boundarySortTempStorage,
+        boundarySortTempStorageBytes,
+        boundaryParticleCellIds,
+        sortedBoundaryCellIds,
+        boundaryParticleIndices,
+        sortedBoundaryParticleIndices,
+        count,
+        0,
+        sizeof(uint32_t) * 8,
+        cudaContext->stream
+    );
+
+    // Initialize empty cell ranges.
+    cudaMemsetAsync(
+        boundaryCellStart,
+        0xFF,
+        cellBytes,
+        cudaContext->stream
+    );
+
+    cudaMemsetAsync(
+        boundaryCellEnd,
+        0xFF,
+        cellBytes,
+        cudaContext->stream
+    );
+
+    // Build ranges for occupied cells.
+    buildCellRangesKernel << <blocks, BLOCK_SIZE, 0, cudaContext->stream >> > (
+        sortedBoundaryCellIds,
+        boundaryCellStart,
+        boundaryCellEnd,
+        count
+        );
 }
 
 void ParticlesKernel::calculatePressure(){
@@ -645,25 +946,49 @@ void ParticlesKernel::calculateViscosityForces()
 
 void ParticlesKernel::calculateDensity() {
 
-    constexpr uint32_t threadsPerBlock = 256;
+    constexpr uint32_t BLOCK_SIZE = 256;
 
-    uint32_t blocks = ( simulationParams.particlesCount + threadsPerBlock - 1) / threadsPerBlock;
+    const uint32_t count = simulationParams.particlesCount;
+
+    if (count == 0)
+        return;
+
+    const uint32_t blocks =
+        (count + BLOCK_SIZE - 1) / BLOCK_SIZE;
     calculateDensityKernel << <
-            ( simulationParams.particlesCount + threadsPerBlock - 1) / threadsPerBlock,
-            threadsPerBlock,
-            0,
-            cudaContext->stream
+        blocks,
+        BLOCK_SIZE,
+        0,
+        cudaContext->stream
         >> > (
             static_cast<CudaParticle*>(cudaBuffer),
+
+            static_cast<BoundaryParticle*>(BPcudaBuffer),
+            simulationParams.boundaryParticlesCount,
+
             sortedParticleIndices,
             cellStart,
             cellEnd,
-            simulationParams.particlesCount,
+
+            sortedBoundaryParticleIndices,
+            boundaryCellStart,
+            boundaryCellEnd,
+
+            count,
+
             simulationParams.mass,
+            simulationParams.boundaryParticleMass,
+
             simulationParams.smoothingRadius,
+            simulationParams.restDensity,
+            simulationParams.gasConstant,
+
             simulationParams.bounds.min,
             simulationParams.gridDimensions,
-            simulationParams.cellSize
+            simulationParams.cellSize,
+
+            boundaryGridOrigin,
+            boundaryGridDimensions
         );
 }
 
@@ -747,6 +1072,8 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext) {
     cudaMemsetAsync(cellEnd, 0xFF, rangeArraySize, cudaContext->stream);
 
     cudaMalloc( &neighborCounts, simulationParams.particlesCount * sizeof(uint32_t) );
+
+    initializeBoundaryGrid();
 }
 
 __global__ void findNeighborsKernel(

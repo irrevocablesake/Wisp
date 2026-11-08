@@ -63,7 +63,10 @@ class Wisp {
 		float mass = 1.0f;
 		float viscosityCoefficient = 0.1f;
 
-		int particlesCount = 5000;
+		uint32_t boundaryParticlesCount;
+		float boundaryParticleMass;
+
+		int particlesCount = 20000;
 
 		float restDensity = 0.0f;
 		float gasConstant = 0.0f;
@@ -195,6 +198,14 @@ class Wisp {
 	}
 
 	void setupCUDA() {
+		constexpr float boundarySpacing = 0.04f;
+
+		float boundaryParticleMass = simulationParams.restDensity *
+			boundarySpacing * boundarySpacing * boundarySpacing;
+
+		simulationParams.boundaryParticleMass = boundaryParticleMass;
+
+
 		//VERY STUPID BTW, WILL REPLACE LATER
 		cudaInterface.simulationParams.gravity = simulationParams.gravity;
 		cudaInterface.simulationParams.particleRadius = simulationParams.particleRadius;
@@ -218,6 +229,11 @@ class Wisp {
 
 		cudaInterface.simulationParams.gridDimensions = make_uint3(simulationParams.gridDimensions.x, simulationParams.gridDimensions.y, simulationParams.gridDimensions.z);
 
+		cudaInterface.simulationParams.boundaryParticleMass = simulationParams.boundaryParticleMass;
+
+		cudaInterface.simulationParams.boundaryParticlesCount = static_cast<uint32_t>(particles.boundaryParticles.size());
+
+
 		//2ND TIME FOR PARTICLES CLASS
 		cudaInterface.particlesKernel.simulationParams.gravity = simulationParams.gravity;
 		cudaInterface.particlesKernel.simulationParams.particleRadius = simulationParams.particleRadius;
@@ -238,6 +254,11 @@ class Wisp {
 
 		cudaInterface.particlesKernel.simulationParams.restDensity = simulationParams.restDensity;
 		cudaInterface.particlesKernel.simulationParams.gridDimensions = make_uint3( simulationParams.gridDimensions.x, simulationParams.gridDimensions.y, simulationParams.gridDimensions.z );
+
+		cudaInterface.particlesKernel.simulationParams.boundaryParticleMass = simulationParams.boundaryParticleMass;
+
+		cudaInterface.particlesKernel.simulationParams.boundaryParticlesCount = static_cast<uint32_t>(particles.boundaryParticles.size());
+
 
 		cudaInterface.initialize(engine.vulkanContext.physicalDeviceIF.uuid );
 	}

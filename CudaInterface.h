@@ -17,6 +17,9 @@ class CudaInterface {
 			float restitution;
 			float smoothingRadius;
 
+			uint32_t boundaryParticlesCount;
+			float boundaryParticleMass;
+
 			int particlesCount;
 			float mass;
 			float cellSize;
