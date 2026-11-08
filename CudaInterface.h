@@ -14,7 +14,7 @@ class CudaInterface {
 		GPUSimulationParams simulationParams;
 
 	public:
+		void simulate();
 		void initialize(const std::array< uint8_t, 16 >& deviceUUID, const CPUSimulationParams& _simulationParams );
-
 		cudaExternalSemaphore_t importSemaphore(HANDLE vkToCudaHandle );
 };

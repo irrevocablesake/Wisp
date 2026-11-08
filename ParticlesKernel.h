@@ -32,7 +32,6 @@ class ParticlesKernel {
 
 		void calculateDensity();
 
-		void findNeighbors();
 
 		struct CudaParticle {
 			float4 position;

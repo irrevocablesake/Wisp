@@ -306,22 +306,7 @@ class Wisp {
 				engine.getCurrentFrame().frameFence
 			);
 
-			cudaInterface.particlesKernel.cudaWaitingForVulkan();
-
-
-			cudaInterface.particlesKernel.generateIDs();
-			cudaInterface.particlesKernel.sortIDs();
-			cudaInterface.particlesKernel.buildCellRanges();
-			//cudaInterface.particlesKernel.findNeighbors();
-			cudaInterface.particlesKernel.calculateDensity();
-			cudaInterface.particlesKernel.calculatePressure();
-			cudaInterface.particlesKernel.calculatePressureForces();
-			cudaInterface.particlesKernel.calculateViscosityForces();
-
-			cudaInterface.particlesKernel.updateParticles( 0.005 );
-
-			cudaInterface.particlesKernel.signalCudaFinished();
-
+			cudaInterface.simulate();
 
 			engine.vulkanContext.currentFrame = (engine.vulkanContext.currentFrame + 1) % engine.vulkanContext.MAX_FRAMES_IN_FLIGHT;
 
