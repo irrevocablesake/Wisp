@@ -183,12 +183,12 @@ class Wisp {
 		vkToCudaHandle = engine.vulkanContext.exportSemaphore(vkToCuda);
 		cudaToVkHandle = engine.vulkanContext.exportSemaphore(cudaToVk);
 
-		cudaInterface.particlesKernel.vkToCuda = cudaInterface.importSemaphore( vkToCudaHandle );
-		cudaInterface.particlesKernel.cudaToVk = cudaInterface.importSemaphore( cudaToVkHandle );
+		cudaInterface.vkToCuda = cudaInterface.importSemaphore( vkToCudaHandle );
+		cudaInterface.cudaToVk = cudaInterface.importSemaphore( cudaToVkHandle );
 
 		cudaInterface.initialize(engine.vulkanContext.physicalDeviceIF.uuid, simulationParams);
 
-		cudaInterface.particlesKernel.signalCudaFinished();
+		cudaInterface.signalCudaFinished();
 	}
 
 	void animate() {

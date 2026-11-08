@@ -8,8 +8,7 @@ class ParticlesKernel {
 	public:
 		CudaContext* cudaContext;
 	public:
-		cudaExternalSemaphore_t vkToCuda{};
-		cudaExternalSemaphore_t cudaToVk{};
+		
 
 		cudaExternalMemory_t externalMemory{};
 		void* cudaBuffer = nullptr;
@@ -73,8 +72,5 @@ class ParticlesKernel {
 		void calculatePressure();
 		void calculatePressureForces();
 		void calculateViscosityForces();
-
-		void cudaWaitingForVulkan();
-		void signalCudaFinished();
 
 };

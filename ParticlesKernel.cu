@@ -1104,13 +1104,3 @@ void ParticlesKernel::updateParticles( float deltaTime) {
         simulationParams->restitution
         );
 }
-
-void ParticlesKernel::cudaWaitingForVulkan() {
-    cudaExternalSemaphoreWaitParams waitParams{};
-    cudaWaitExternalSemaphoresAsync(&vkToCuda, &waitParams, 1, cudaContext->stream);
-}
-
-void ParticlesKernel::signalCudaFinished() {
-    cudaExternalSemaphoreSignalParams signalParams{};
-    cudaSignalExternalSemaphoresAsync(&cudaToVk, &signalParams, 1, cudaContext->stream);
-}

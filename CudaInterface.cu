@@ -13,7 +13,7 @@ cudaExternalSemaphore_t CudaInterface::importSemaphore(HANDLE vkToCudaHandle) {
 }
 
 void CudaInterface::simulate() {
-	particlesKernel.cudaWaitingForVulkan();
+	cudaWaitingForVulkan();
 
 	particlesKernel.generateIDs();
 	particlesKernel.sortIDs();
@@ -24,5 +24,15 @@ void CudaInterface::simulate() {
 	particlesKernel.calculateViscosityForces();
 	particlesKernel.updateParticles(0.005);
 
-	particlesKernel.signalCudaFinished();
+	signalCudaFinished();
+}
+
+void CudaInterface::cudaWaitingForVulkan() {
+	cudaExternalSemaphoreWaitParams waitParams{};
+	cudaWaitExternalSemaphoresAsync(&vkToCuda, &waitParams, 1, cudaContext.stream);
+}
+
+void CudaInterface::signalCudaFinished() {
+	cudaExternalSemaphoreSignalParams signalParams{};
+	cudaSignalExternalSemaphoresAsync(&cudaToVk, &signalParams, 1, cudaContext.stream);
 }
