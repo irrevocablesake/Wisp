@@ -3,19 +3,17 @@
 #include<volk/volk.h>
 #include<iostream>
 
-using namespace std;
-
 struct ValidationHelpers {
-	void validateResult(VkResult result, string message = "ERROR") {
+	void validateResult(VkResult result, std::string message = "ERROR") {
 		if (result != VK_SUCCESS) {
-			cerr << "ERROR: " << message << endl;
+			std::cerr << "ERROR: " << message << std::endl;
 			exit(result);
 		}
 	}
 
-	void validateResult(bool result, string message = "ERROR") {
+	void validateResult(bool result, std::string message = "ERROR") {
 		if (!result) {
-			cerr << "ERROR: " << message << endl;
+			std::cerr << "ERROR: " << message << std::endl;
 			exit(result);
 		}
 	}
@@ -27,7 +25,7 @@ struct ValidationHelpers {
 				return;
 			}
 
-			cerr << "ERROR: Swapchain Validation Failed" << endl;
+			std::cerr << "ERROR: Swapchain Validation Failed" << std::endl;
 			exit(result);
 		}
 	}

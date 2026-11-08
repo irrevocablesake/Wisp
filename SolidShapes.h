@@ -5,8 +5,6 @@
 #include<vector>
 #include<glm/glm.hpp>
 
-using namespace std;
-
 class SolidShapes {
 private:
     const float PI = 3.14159265359f;

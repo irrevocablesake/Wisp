@@ -2,8 +2,6 @@
 
 #include <cuda_runtime.h>
 
-using namespace std;
-
 void CudaContext::initialize(const std::array<uint8_t, 16>& vulkanUUID) {
 	int deviceCount = 0;
 	cudaGetDeviceCount(&deviceCount);
