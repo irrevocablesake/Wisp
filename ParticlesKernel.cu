@@ -12,18 +12,39 @@ __global__ void initializeIndicesKernel( uint32_t* particleIndices, unsigned int
     particleIndices[index] = index;
 }
 
-__global__ void updateKernel( ParticlesKernel::CudaParticle* particles, unsigned int count, float deltaTime, float gravity, float3 boundsMin, float3 boundsMax, float radius, float restitution ){
-	unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void updateKernel(
+    ParticlesKernel::CudaParticle* particles,
+    unsigned int count,
+    float deltaTime,
+    float gravity,
+    float particleMass,
+    float3 boundsMin,
+    float3 boundsMax,
+    float radius,
+    float restitution)
+{
+    unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (index >= count )
-		return;
+    if (index >= count)
+        return;
 
-	ParticlesKernel::CudaParticle& particle = particles[index];
-	particle.velocity.y += gravity * deltaTime;
+    ParticlesKernel::CudaParticle& particle = particles[index];
 
-	particle.position.x += particle.velocity.x * deltaTime;
-	particle.position.y += particle.velocity.y * deltaTime;
-	particle.position.z += particle.velocity.z * deltaTime;
+    float3 totalForce = make_float3(
+        particle.pressureForces.x + particle.viscosityForces.x,
+        particle.pressureForces.y + particle.viscosityForces.y,
+        particle.pressureForces.z + particle.viscosityForces.z
+    );
+
+    //POSSIBLY SURFACE FRICTION?
+
+    particle.velocity.x += (totalForce.x / particleMass) * deltaTime;
+    particle.velocity.y += (totalForce.y / particleMass + gravity) * deltaTime;
+    particle.velocity.z += (totalForce.z / particleMass) * deltaTime;
+
+    particle.position.x += particle.velocity.x * deltaTime;
+    particle.position.y += particle.velocity.y * deltaTime;
+    particle.position.z += particle.velocity.z * deltaTime;
 
     if (particle.position.x < boundsMin.x + radius) {
         particle.position.x = boundsMin.x + radius;
@@ -93,6 +114,7 @@ __global__ void buildCellRangesKernel( const uint32_t* sortedCellIds, uint32_t* 
 }
 
 //NOTE: Later i think we either can remove this function or modify it to make it work with calculateDensityKernel
+//Note: Function from the paper, just use as an abstraction - will understand later, basically says: How much influcence P2 will have on P1 based on r and h, returns a weight
 __device__ float poly6Kernel(float distanceSquared, float smoothingRadius)
 {
     float h2 = smoothingRadius * smoothingRadius;
@@ -268,6 +290,8 @@ __global__ void calculateDensityKernel(
         static_cast<int>(floorf((position.z - gridOrigin.z) / cellSize))
     );
 
+
+    //NEDD TO FIX THIS -1 TO 1 RANGE
     for (int z = -1; z <= 1; ++z)
     {
         for (int y = -1; y <= 1; ++y)
@@ -342,6 +366,54 @@ __global__ void calculateDensityKernel(
     }
 
     particles[particleID].density = density;
+}
+
+void ParticlesKernel::calculateDensity() {
+
+    constexpr uint32_t BLOCK_SIZE = 256;
+
+    const uint32_t count = simulationParams->particlesCount;
+
+    if (count == 0)
+        return;
+
+    const uint32_t blocks =
+        (count + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    calculateDensityKernel << <
+        blocks,
+        BLOCK_SIZE,
+        0,
+        cudaContext->stream
+        >> > (
+            static_cast<CudaParticle*>(cudaBuffer),
+
+            static_cast<BoundaryParticle*>(BPcudaBuffer),
+            simulationParams->boundaryParticlesCount,
+
+            sortedParticleIndices,
+            cellStart,
+            cellEnd,
+
+            sortedBoundaryParticleIndices,
+            boundaryCellStart,
+            boundaryCellEnd,
+
+            count,
+
+            simulationParams->mass,
+            simulationParams->boundaryParticleMass,
+
+            simulationParams->smoothingRadius,
+            simulationParams->restDensity,
+            simulationParams->gasConstant,
+
+            simulationParams->bounds.min,
+            simulationParams->gridDimensions,
+            simulationParams->cellSize,
+
+            boundaryGridOrigin,
+            boundaryGridDimensions
+            );
 }
 
 __global__ void calculatePressureKernel(
@@ -944,54 +1016,6 @@ void ParticlesKernel::calculateViscosityForces()
 
 }
 
-void ParticlesKernel::calculateDensity() {
-
-    constexpr uint32_t BLOCK_SIZE = 256;
-
-    const uint32_t count = simulationParams -> particlesCount;
-
-    if (count == 0)
-        return;
-
-    const uint32_t blocks =
-        (count + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    calculateDensityKernel << <
-        blocks,
-        BLOCK_SIZE,
-        0,
-        cudaContext->stream
-        >> > (
-            static_cast<CudaParticle*>(cudaBuffer),
-
-            static_cast<BoundaryParticle*>(BPcudaBuffer),
-            simulationParams -> boundaryParticlesCount,
-
-            sortedParticleIndices,
-            cellStart,
-            cellEnd,
-
-            sortedBoundaryParticleIndices,
-            boundaryCellStart,
-            boundaryCellEnd,
-
-            count,
-
-            simulationParams -> mass,
-            simulationParams -> boundaryParticleMass,
-
-            simulationParams -> smoothingRadius,
-            simulationParams -> restDensity,
-            simulationParams -> gasConstant,
-
-            simulationParams -> bounds.min,
-            simulationParams -> gridDimensions,
-            simulationParams -> cellSize,
-
-            boundaryGridOrigin,
-            boundaryGridDimensions
-        );
-}
-
 void ParticlesKernel::buildCellRanges(){
     const uint32_t count = simulationParams -> particlesCount;
 
@@ -1207,8 +1231,17 @@ void ParticlesKernel::updateParticles( float deltaTime) {
 
     constexpr int blockSize = 256;
     unsigned int gridSize = (simulationParams -> particlesCount + blockSize - 1) / blockSize;
-    updateKernel << <gridSize, blockSize, 0, cudaContext->stream >> > (static_cast<CudaParticle*>(cudaBuffer), simulationParams -> particlesCount, deltaTime, simulationParams -> gravity, simulationParams -> bounds.min, simulationParams -> bounds.max, simulationParams -> particleRadius, simulationParams -> restitution);
-
+    updateKernel << <gridSize, blockSize, 0, cudaContext->stream >> > (
+        static_cast<CudaParticle*>(cudaBuffer),
+        simulationParams->particlesCount,
+        deltaTime,
+        simulationParams->gravity,
+        simulationParams->mass, 
+        simulationParams->bounds.min,
+        simulationParams->bounds.max,
+        simulationParams->particleRadius,
+        simulationParams->restitution
+        );
 }
 
 void ParticlesKernel::cudaWaitingForVulkan() {

@@ -318,7 +318,7 @@ class Wisp {
 			cudaInterface.particlesKernel.calculatePressureForces();
 			cudaInterface.particlesKernel.calculateViscosityForces();
 
-			cudaInterface.particlesKernel.updateParticles( deltaTime );
+			cudaInterface.particlesKernel.updateParticles( 0.005 );
 
 			cudaInterface.particlesKernel.signalCudaFinished();
 
