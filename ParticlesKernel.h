@@ -8,8 +8,10 @@ class ParticlesKernel {
 	public:
 		CudaContext* cudaContext;
 	public:
-		
 
+		int THREADS_PER_BLOCK = 0;
+		int BLOCKS_COUNT = 0;
+		
 		cudaExternalMemory_t externalMemory{};
 		void* cudaBuffer = nullptr;
 
