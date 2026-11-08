@@ -69,7 +69,7 @@ class ParticlesKernel {
 
 		void initialize( CudaContext &_cudaContext );
 
-		void updateParticles(  float deltaTime, bool waitForVulkan = true);
+		void updateParticles( float deltaTime );
 		void generateIDs();
 		void sortIDs();
 		void buildCellRanges();
@@ -77,5 +77,7 @@ class ParticlesKernel {
 		void calculatePressureForces();
 		void calculateViscosityForces();
 
-		void launchParticleUpdate(void* buffer, float deltaTime );
+		void cudaWaitingForVulkan();
+		void signalCudaFinished();
+
 };

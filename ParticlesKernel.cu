@@ -875,20 +875,20 @@ void ParticlesKernel::sortIDs() {
     );
 }
 
-void ParticlesKernel::launchParticleUpdate(void* buffer, float deltaTime) {
-	constexpr int blockSize = 256;
-	unsigned int gridSize = ( simulationParams.particlesCount + blockSize - 1) / blockSize;
-	updateKernel << <gridSize, blockSize, 0, cudaContext->stream >> > ( static_cast<CudaParticle*>(buffer), simulationParams.particlesCount, deltaTime, simulationParams.gravity, simulationParams.bounds.min, simulationParams.bounds.max, simulationParams.particleRadius, simulationParams.restitution  );
+void ParticlesKernel::updateParticles( float deltaTime) {
+
+    constexpr int blockSize = 256;
+    unsigned int gridSize = (simulationParams.particlesCount + blockSize - 1) / blockSize;
+    updateKernel << <gridSize, blockSize, 0, cudaContext->stream >> > (static_cast<CudaParticle*>(cudaBuffer), simulationParams.particlesCount, deltaTime, simulationParams.gravity, simulationParams.bounds.min, simulationParams.bounds.max, simulationParams.particleRadius, simulationParams.restitution);
+
 }
 
-void ParticlesKernel::updateParticles( float deltaTime, bool waitForVulkan) {
-	if (waitForVulkan) {
-		cudaExternalSemaphoreWaitParams waitParams{};
-		cudaWaitExternalSemaphoresAsync(&vkToCuda, &waitParams, 1, cudaContext->stream);
-	}
+void ParticlesKernel::cudaWaitingForVulkan() {
+    cudaExternalSemaphoreWaitParams waitParams{};
+    cudaWaitExternalSemaphoresAsync(&vkToCuda, &waitParams, 1, cudaContext->stream);
+}
 
-	launchParticleUpdate(cudaBuffer, deltaTime);
-
-	cudaExternalSemaphoreSignalParams signalParams{};
-	cudaSignalExternalSemaphoresAsync( &cudaToVk, &signalParams, 1, cudaContext->stream );
+void ParticlesKernel::signalCudaFinished() {
+    cudaExternalSemaphoreSignalParams signalParams{};
+    cudaSignalExternalSemaphoresAsync(&cudaToVk, &signalParams, 1, cudaContext->stream);
 }
