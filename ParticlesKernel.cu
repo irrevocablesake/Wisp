@@ -12,6 +12,210 @@ __global__ void initializeIndicesKernel( uint32_t* particleIndices, unsigned int
     particleIndices[index] = index;
 }
 
+template < typename ParticleType >
+__global__ void generateIDsKernel( const ParticleType* particles, unsigned int count, float3 gridOrigin, uint3 gridDimensions, float cellSize,  uint32_t* particleCellIds ){
+    unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (index >= count )
+        return;
+
+    float3 position = make_float3( particles[index].position.x, particles[index].position.y, particles[index].position.z );
+
+    int3 cell{};
+    cell.x = static_cast<int>( floorf((position.x - gridOrigin.x) / cellSize));
+
+    cell.y = static_cast<int>( floorf((position.y - gridOrigin.y) / cellSize));
+
+    cell.z = static_cast<int>( floorf((position.z - gridOrigin.z) / cellSize));
+
+    cell.x = max(0, min(cell.x, (int)gridDimensions.x - 1));
+    cell.y = max(0, min(cell.y, (int)gridDimensions.y - 1));
+    cell.z = max(0, min(cell.z, (int)gridDimensions.z - 1));
+
+    particleCellIds[index] = cell.x + gridDimensions.x * ( cell.y + gridDimensions.y * cell.z);
+}
+
+__global__ void buildCellRangesKernel( const uint32_t* sortedCellIds, uint32_t* cellStart, uint32_t* cellEnd, uint32_t particleCount){
+    uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (index >= particleCount)
+        return;
+
+    uint32_t currentCell = sortedCellIds[index];
+
+    if (index == 0 || sortedCellIds[index - 1] != currentCell){
+        cellStart[currentCell] = index;
+    }
+
+    if (index == particleCount - 1 || sortedCellIds[index + 1] != currentCell){
+        cellEnd[currentCell] = index + 1;
+    }
+}
+
+void ParticlesKernel::buildCellRanges() {
+    const uint32_t count = simulationParams->particlesCount;
+
+    if (count == 0)
+        return;
+
+    const uint32_t threadsPerBlock = 256;
+    const uint32_t blocks = (count + threadsPerBlock - 1) / threadsPerBlock;
+
+    size_t totalCells = static_cast<size_t>(simulationParams->gridDimensions.x) * static_cast<size_t>(simulationParams->gridDimensions.y) * static_cast<size_t>(simulationParams->gridDimensions.z);
+
+    size_t arraySize = totalCells * sizeof(uint32_t);
+
+    cudaMemsetAsync(cellStart, 0xFF, arraySize, cudaContext->stream);
+    cudaMemsetAsync(cellEnd, 0xFF, arraySize, cudaContext->stream);
+
+    buildCellRangesKernel << <blocks, threadsPerBlock, 0, cudaContext->stream >> > (
+        sortedCellIds,
+        cellStart,
+        cellEnd,
+        count
+        );
+}
+
+void ParticlesKernel::generateIDs() {
+    constexpr unsigned int blockSize = 256;
+
+    unsigned int gridSize = (simulationParams->particlesCount + blockSize - 1) / blockSize;
+    generateIDsKernel << <gridSize, blockSize, 0, cudaContext->stream >> > (
+        static_cast<CudaParticle*>(cudaBuffer),
+        simulationParams->particlesCount,
+        simulationParams->bounds.min,
+        simulationParams->gridDimensions,
+        simulationParams->cellSize,
+        particleCellIds
+        );
+}
+
+__global__ void findNeighborsKernel(
+    const ParticlesKernel::CudaParticle* particles,
+    const uint32_t* sortedParticleIndices,
+    const uint32_t* cellStart,
+    const uint32_t* cellEnd,
+    uint32_t* neighborCounts,
+    uint32_t particleCount,
+    float3 gridOrigin,
+    uint3 gridDimensions,
+    float cellSize,
+    float smoothingRadius)
+{
+    uint32_t particleID = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (particleID >= particleCount)
+        return;
+
+    float3 position = make_float3(particles[particleID].position.x, particles[particleID].position.y, particles[particleID].position.z);
+
+    int3 cell = make_int3(
+        floorf((position.x - gridOrigin.x) / cellSize),
+        floorf((position.y - gridOrigin.y) / cellSize),
+        floorf((position.z - gridOrigin.z) / cellSize)
+    );
+
+    uint32_t neighborCount = 0;
+    float radiusSquared = smoothingRadius * smoothingRadius;
+
+    for (int z = -1; z <= 1; ++z)
+    {
+        for (int y = -1; y <= 1; ++y)
+        {
+            for (int x = -1; x <= 1; ++x)
+            {
+                int cx = cell.x + x;
+                int cy = cell.y + y;
+                int cz = cell.z + z;
+
+                if (cx < 0 || cy < 0 || cz < 0 ||
+                    cx >= static_cast<int>(gridDimensions.x) ||
+                    cy >= static_cast<int>(gridDimensions.y) ||
+                    cz >= static_cast<int>(gridDimensions.z))
+                    continue;
+
+                uint32_t cellID = cx + gridDimensions.x * (cy + gridDimensions.y * cz);
+
+                if (cellStart[cellID] == UINT_MAX)
+                    continue;
+
+                for (uint32_t i = cellStart[cellID]; i < cellEnd[cellID]; ++i) {
+                    uint32_t otherID = sortedParticleIndices[i];
+
+                    if (otherID == particleID)
+                        continue;
+
+                    float3 otherPosition = make_float3(
+                        particles[otherID].position.x,
+                        particles[otherID].position.y,
+                        particles[otherID].position.z
+                    );
+
+                    float3 difference = make_float3(
+                        position.x - otherPosition.x,
+                        position.y - otherPosition.y,
+                        position.z - otherPosition.z
+                    );
+
+                    float distanceSquared = difference.x * difference.x + difference.y * difference.y + difference.z * difference.z;
+
+                    if (distanceSquared < radiusSquared) {
+                        ++neighborCount;
+                    }
+                }
+            }
+        }
+    }
+
+    neighborCounts[particleID] = neighborCount;
+}
+
+void ParticlesKernel::findNeighbors()
+{
+    uint32_t count = simulationParams->particlesCount;
+
+    if (count == 0)
+        return;
+
+    constexpr uint32_t threadsPerBlock = 256;
+
+    uint32_t blocks = (count + threadsPerBlock - 1) / threadsPerBlock;
+
+    findNeighborsKernel << <blocks, threadsPerBlock, 0, cudaContext->stream >> > (
+        static_cast<CudaParticle*>(cudaBuffer),
+        sortedParticleIndices,
+        cellStart,
+        cellEnd,
+        neighborCounts,
+        count,
+        simulationParams->bounds.min,
+        make_uint3(
+            static_cast<uint32_t>(simulationParams->gridDimensions.x),
+            static_cast<uint32_t>(simulationParams->gridDimensions.y),
+            static_cast<uint32_t>(simulationParams->gridDimensions.z)
+        ),
+        simulationParams->cellSize,
+        simulationParams->smoothingRadius
+        );
+}
+
+void ParticlesKernel::sortIDs() {
+    const unsigned int count = static_cast<unsigned int>(simulationParams->particlesCount);
+
+    cub::DeviceRadixSort::SortPairs(
+        sortTempStorage,
+        sortTempStorageBytes,
+        particleCellIds,
+        sortedCellIds,
+        particleIndices,
+        sortedParticleIndices,
+        count,
+        0,
+        sizeof(uint32_t) * 8,
+        cudaContext->stream
+    );
+}
+
 __global__ void updateKernel(
     ParticlesKernel::CudaParticle* particles,
     unsigned int count,
@@ -73,46 +277,6 @@ __global__ void updateKernel(
         particle.velocity.z = -fabsf(particle.velocity.z) * restitution;
     }
 }
-
-__global__ void generateIDsKernel( const ParticlesKernel::CudaParticle* particles, unsigned int count, float3 gridOrigin, uint3 gridDimensions, float cellSize,  uint32_t* particleCellIds ){
-    unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (index >= count )
-        return;
-
-    float3 position = make_float3( particles[index].position.x, particles[index].position.y, particles[index].position.z );
-
-    int3 cell{};
-    cell.x = static_cast<int>( floorf((position.x - gridOrigin.x) / cellSize));
-
-    cell.y = static_cast<int>( floorf((position.y - gridOrigin.y) / cellSize));
-
-    cell.z = static_cast<int>( floorf((position.z - gridOrigin.z) / cellSize));
-
-    cell.x = max(0, min(cell.x, (int)gridDimensions.x - 1));
-    cell.y = max(0, min(cell.y, (int)gridDimensions.y - 1));
-    cell.z = max(0, min(cell.z, (int)gridDimensions.z - 1));
-
-    particleCellIds[index] = cell.x + gridDimensions.x * ( cell.y + gridDimensions.y * cell.z);
-}
-
-__global__ void buildCellRangesKernel( const uint32_t* sortedCellIds, uint32_t* cellStart, uint32_t* cellEnd, uint32_t particleCount){
-    uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (index >= particleCount)
-        return;
-
-    uint32_t currentCell = sortedCellIds[index];
-
-    if (index == 0 || sortedCellIds[index - 1] != currentCell){
-        cellStart[currentCell] = index;
-    }
-
-    if (index == particleCount - 1 || sortedCellIds[index + 1] != currentCell){
-        cellEnd[currentCell] = index + 1;
-    }
-}
-
 //NOTE: Later i think we either can remove this function or modify it to make it work with calculateDensityKernel
 //Note: Function from the paper, just use as an abstraction - will understand later, basically says: How much influcence P2 will have on P1 based on r and h, returns a weight
 __device__ float poly6Kernel(float distanceSquared, float smoothingRadius)
@@ -431,38 +595,6 @@ __global__ void calculatePressureKernel(
     particles[i].pressure = gasConstant * fmaxf(density - restDensity, 0.0f);
 }
 
-__global__ void generateBoundaryIDsKernel(
-    const ParticlesKernel::BoundaryParticle* boundaryParticles,
-    uint32_t boundaryParticleCount,
-    float3 gridOrigin,
-    uint3 gridDimensions,
-    float cellSize,
-    uint32_t* boundaryParticleCellIds)
-{
-    uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (index >= boundaryParticleCount)
-        return;
-
-    float3 position = make_float3(
-        boundaryParticles[index].position.x,
-        boundaryParticles[index].position.y,
-        boundaryParticles[index].position.z
-    );
-
-    int3 cell = make_int3(
-        static_cast<int>(floorf((position.x - gridOrigin.x) / cellSize)),
-        static_cast<int>(floorf((position.y - gridOrigin.y) / cellSize)),
-        static_cast<int>(floorf((position.z - gridOrigin.z) / cellSize))
-    );
-
-    cell.x = max(0, min(cell.x, static_cast<int>(gridDimensions.x) - 1));
-    cell.y = max(0, min(cell.y, static_cast<int>(gridDimensions.y) - 1));
-    cell.z = max(0, min(cell.z, static_cast<int>(gridDimensions.z) - 1));
-
-    boundaryParticleCellIds[index] =
-        cell.x + gridDimensions.x * (cell.y + gridDimensions.y * cell.z);
-}
 
 void ParticlesKernel::initializeBoundaryGrid()
 {
@@ -528,7 +660,7 @@ void ParticlesKernel::initializeBoundaryGrid()
         count
         );
 
-    generateBoundaryIDsKernel << <blocks, BLOCK_SIZE, 0, cudaContext->stream >> > (
+    generateIDsKernel << <blocks, BLOCK_SIZE, 0, cudaContext->stream >> > (
         static_cast<const BoundaryParticle*>(BPcudaBuffer),
         count,
         boundaryGridOrigin,
@@ -1016,43 +1148,6 @@ void ParticlesKernel::calculateViscosityForces()
 
 }
 
-void ParticlesKernel::buildCellRanges(){
-    const uint32_t count = simulationParams -> particlesCount;
-
-    if (count == 0)
-        return;
-
-    const uint32_t threadsPerBlock = 256;
-    const uint32_t blocks = (count + threadsPerBlock - 1) / threadsPerBlock;
-
-    size_t totalCells = static_cast<size_t>(simulationParams -> gridDimensions.x) * static_cast<size_t>(simulationParams -> gridDimensions.y) * static_cast<size_t>(simulationParams -> gridDimensions.z);
-
-    size_t arraySize = totalCells * sizeof(uint32_t);
-
-    cudaMemsetAsync(cellStart, 0xFF, arraySize, cudaContext->stream);
-    cudaMemsetAsync(cellEnd, 0xFF, arraySize, cudaContext->stream);
-
-    buildCellRangesKernel << <blocks, threadsPerBlock, 0, cudaContext->stream >> > (
-        sortedCellIds,
-        cellStart,
-        cellEnd,
-        count
-    );
-}
-
-void ParticlesKernel::generateIDs() {
-    constexpr unsigned int blockSize = 256;
-
-    unsigned int gridSize = ( simulationParams -> particlesCount + blockSize - 1) / blockSize;
-    generateIDsKernel << <gridSize, blockSize, 0, cudaContext->stream >> > (
-        static_cast<CudaParticle*>(cudaBuffer),
-        simulationParams -> particlesCount,
-        simulationParams -> bounds.min,
-        simulationParams -> gridDimensions,
-        simulationParams -> cellSize,
-        particleCellIds
-    );
-}
 
 void ParticlesKernel::initialize(CudaContext& _cudaContext, GPUSimulationParams &_simulationParams ) {
     cudaContext = &_cudaContext;
@@ -1101,131 +1196,6 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext, GPUSimulationParams 
     initializeBoundaryGrid();
 }
 
-__global__ void findNeighborsKernel(
-    const ParticlesKernel::CudaParticle* particles,
-    const uint32_t* sortedParticleIndices,
-    const uint32_t* cellStart,
-    const uint32_t* cellEnd,
-    uint32_t* neighborCounts,
-    uint32_t particleCount,
-    float3 gridOrigin,
-    uint3 gridDimensions,
-    float cellSize,
-    float smoothingRadius)
-{
-    uint32_t particleID = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (particleID >= particleCount)
-        return;
-
-    float3 position = make_float3( particles[particleID].position.x, particles[particleID].position.y, particles[particleID].position.z );
-
-    int3 cell = make_int3( 
-        floorf((position.x - gridOrigin.x) / cellSize),
-        floorf((position.y - gridOrigin.y) / cellSize),
-        floorf((position.z - gridOrigin.z) / cellSize)
-    );
-
-    uint32_t neighborCount = 0;
-    float radiusSquared = smoothingRadius * smoothingRadius;
-
-    for (int z = -1; z <= 1; ++z)
-    {
-        for (int y = -1; y <= 1; ++y)
-        {
-            for (int x = -1; x <= 1; ++x)
-            {
-                int cx = cell.x + x;
-                int cy = cell.y + y;
-                int cz = cell.z + z;
-
-                if (cx < 0 || cy < 0 || cz < 0 ||
-                    cx >= static_cast<int>(gridDimensions.x) ||
-                    cy >= static_cast<int>(gridDimensions.y) ||
-                    cz >= static_cast<int>(gridDimensions.z))
-                    continue;
-
-                uint32_t cellID = cx + gridDimensions.x * (cy + gridDimensions.y * cz);
-
-                if (cellStart[cellID] == UINT_MAX)
-                    continue;
-
-                for (uint32_t i = cellStart[cellID]; i < cellEnd[cellID]; ++i) {
-                    uint32_t otherID = sortedParticleIndices[i];
-
-                    if (otherID == particleID)
-                        continue;
-
-                    float3 otherPosition = make_float3(
-                        particles[otherID].position.x,
-                        particles[otherID].position.y,
-                        particles[otherID].position.z
-                    );
-
-                    float3 difference = make_float3(
-                        position.x - otherPosition.x,
-                        position.y - otherPosition.y,
-                        position.z - otherPosition.z
-                    );
-
-                    float distanceSquared = difference.x * difference.x + difference.y * difference.y + difference.z * difference.z;
-
-                    if (distanceSquared < radiusSquared) {
-                        ++neighborCount;
-                    }
-                }
-            }
-        }
-    }
-
-    neighborCounts[particleID] = neighborCount;
-}
-
-void ParticlesKernel::findNeighbors()
-{
-    uint32_t count = simulationParams -> particlesCount;
-
-    if (count == 0)
-        return;
-
-    constexpr uint32_t threadsPerBlock = 256;
-
-    uint32_t blocks = (count + threadsPerBlock - 1) / threadsPerBlock;
-
-    findNeighborsKernel << <blocks, threadsPerBlock, 0, cudaContext->stream >> > (
-        static_cast<CudaParticle*>(cudaBuffer),
-        sortedParticleIndices,
-        cellStart,
-        cellEnd,
-        neighborCounts,
-        count,
-        simulationParams -> bounds.min,
-        make_uint3(
-            static_cast<uint32_t>(simulationParams -> gridDimensions.x),
-            static_cast<uint32_t>(simulationParams -> gridDimensions.y),
-            static_cast<uint32_t>(simulationParams -> gridDimensions.z)
-        ),
-        simulationParams -> cellSize,
-        simulationParams -> smoothingRadius
-    );
-}
-
-void ParticlesKernel::sortIDs() {
-    const unsigned int count = static_cast<unsigned int>(simulationParams -> particlesCount);
-
-    cub::DeviceRadixSort::SortPairs(
-        sortTempStorage,
-        sortTempStorageBytes,
-        particleCellIds,
-        sortedCellIds,
-        particleIndices,
-        sortedParticleIndices,
-        count,
-        0,
-        sizeof(uint32_t) * 8,
-        cudaContext->stream
-    );
-}
 
 void ParticlesKernel::updateParticles( float deltaTime) {
 
