@@ -394,7 +394,7 @@ __global__ void generateBoundaryIDsKernel(
 
 void ParticlesKernel::initializeBoundaryGrid()
 {
-    const uint32_t count = simulationParams.boundaryParticlesCount;
+    const uint32_t count = simulationParams -> boundaryParticlesCount;
 
     if (count == 0)
         return;
@@ -406,8 +406,8 @@ void ParticlesKernel::initializeBoundaryGrid()
     // Add one extra spacing as padding for safe grid indexing.
     constexpr float PADDING = 3.0f * BOUNDARY_SPACING;
 
-    float3 boundsMin = simulationParams.bounds.min;
-    float3 boundsMax = simulationParams.bounds.max;
+    float3 boundsMin = simulationParams -> bounds.min;
+    float3 boundsMax = simulationParams -> bounds.max;
 
     boundaryGridOrigin = make_float3(
         boundsMin.x - PADDING,
@@ -418,15 +418,15 @@ void ParticlesKernel::initializeBoundaryGrid()
     boundaryGridDimensions = make_uint3(
         static_cast<uint32_t>(ceilf(
             (boundsMax.x - boundsMin.x + 2.0f * PADDING) /
-            simulationParams.cellSize)) + 1,
+            simulationParams -> cellSize)) + 1,
 
         static_cast<uint32_t>(ceilf(
             (boundsMax.y - boundsMin.y + 2.0f * PADDING) /
-            simulationParams.cellSize)) + 1,
+            simulationParams -> cellSize)) + 1,
 
         static_cast<uint32_t>(ceilf(
             (boundsMax.z - boundsMin.z + 2.0f * PADDING) /
-            simulationParams.cellSize)) + 1
+            simulationParams -> cellSize)) + 1
     );
 
     const size_t particleBytes = count * sizeof(uint32_t);
@@ -461,7 +461,7 @@ void ParticlesKernel::initializeBoundaryGrid()
         count,
         boundaryGridOrigin,
         boundaryGridDimensions,
-        simulationParams.cellSize,
+        simulationParams -> cellSize,
         boundaryParticleCellIds
         );
 
@@ -525,7 +525,7 @@ void ParticlesKernel::initializeBoundaryGrid()
 void ParticlesKernel::calculatePressure(){
     constexpr uint32_t BLOCK_SIZE = 256;
 
-    uint32_t gridSize = ( simulationParams.particlesCount + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    uint32_t gridSize = ( simulationParams -> particlesCount + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
     calculatePressureKernel << <
         gridSize,
@@ -534,9 +534,9 @@ void ParticlesKernel::calculatePressure(){
         cudaContext->stream
      >> > (
             static_cast<CudaParticle*>(cudaBuffer),
-            simulationParams.particlesCount,
-            simulationParams.restDensity,
-            simulationParams.gasConstant
+            simulationParams -> particlesCount,
+            simulationParams -> restDensity,
+            simulationParams -> gasConstant
          );
 }
 
@@ -715,7 +715,7 @@ void ParticlesKernel::calculatePressureForces()
 {
     constexpr uint32_t BLOCK_SIZE = 256;
 
-    uint32_t gridSize = ( simulationParams.particlesCount + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    uint32_t gridSize = ( simulationParams -> particlesCount + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
     calculatePressureForcesKernel << <
         gridSize,
@@ -724,13 +724,13 @@ void ParticlesKernel::calculatePressureForces()
         cudaContext->stream
         >> > (
             static_cast<CudaParticle*>(cudaBuffer),
-            simulationParams.particlesCount,
-            simulationParams.mass,
-            simulationParams.smoothingRadius,
+            simulationParams -> particlesCount,
+            simulationParams -> mass,
+            simulationParams -> smoothingRadius,
 
-            simulationParams.bounds.min,
-            simulationParams.cellSize,
-            simulationParams.gridDimensions,
+            simulationParams -> bounds.min,
+            simulationParams -> cellSize,
+            simulationParams -> gridDimensions,
 
             sortedParticleIndices,
             cellStart,
@@ -919,7 +919,7 @@ void ParticlesKernel::calculateViscosityForces()
 {
     constexpr uint32_t BLOCK_SIZE = 256;
 
-    uint32_t gridSize = (simulationParams.particlesCount + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    uint32_t gridSize = (simulationParams -> particlesCount + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
     calculateViscosityForcesKernel << <
         gridSize,
@@ -928,14 +928,14 @@ void ParticlesKernel::calculateViscosityForces()
         cudaContext->stream
         >> > (
             static_cast<CudaParticle*>(cudaBuffer),
-            simulationParams.particlesCount,
-            simulationParams.mass,
-            simulationParams.smoothingRadius,
-            simulationParams.viscosityCoefficient,
+            simulationParams -> particlesCount,
+            simulationParams -> mass,
+            simulationParams -> smoothingRadius,
+            simulationParams -> viscosityCoefficient,
 
-            simulationParams.bounds.min,
-            simulationParams.cellSize,
-            simulationParams.gridDimensions,
+            simulationParams -> bounds.min,
+            simulationParams -> cellSize,
+            simulationParams -> gridDimensions,
 
             sortedParticleIndices,
             cellStart,
@@ -948,7 +948,7 @@ void ParticlesKernel::calculateDensity() {
 
     constexpr uint32_t BLOCK_SIZE = 256;
 
-    const uint32_t count = simulationParams.particlesCount;
+    const uint32_t count = simulationParams -> particlesCount;
 
     if (count == 0)
         return;
@@ -964,7 +964,7 @@ void ParticlesKernel::calculateDensity() {
             static_cast<CudaParticle*>(cudaBuffer),
 
             static_cast<BoundaryParticle*>(BPcudaBuffer),
-            simulationParams.boundaryParticlesCount,
+            simulationParams -> boundaryParticlesCount,
 
             sortedParticleIndices,
             cellStart,
@@ -976,16 +976,16 @@ void ParticlesKernel::calculateDensity() {
 
             count,
 
-            simulationParams.mass,
-            simulationParams.boundaryParticleMass,
+            simulationParams -> mass,
+            simulationParams -> boundaryParticleMass,
 
-            simulationParams.smoothingRadius,
-            simulationParams.restDensity,
-            simulationParams.gasConstant,
+            simulationParams -> smoothingRadius,
+            simulationParams -> restDensity,
+            simulationParams -> gasConstant,
 
-            simulationParams.bounds.min,
-            simulationParams.gridDimensions,
-            simulationParams.cellSize,
+            simulationParams -> bounds.min,
+            simulationParams -> gridDimensions,
+            simulationParams -> cellSize,
 
             boundaryGridOrigin,
             boundaryGridDimensions
@@ -993,7 +993,7 @@ void ParticlesKernel::calculateDensity() {
 }
 
 void ParticlesKernel::buildCellRanges(){
-    const uint32_t count = simulationParams.particlesCount;
+    const uint32_t count = simulationParams -> particlesCount;
 
     if (count == 0)
         return;
@@ -1001,7 +1001,7 @@ void ParticlesKernel::buildCellRanges(){
     const uint32_t threadsPerBlock = 256;
     const uint32_t blocks = (count + threadsPerBlock - 1) / threadsPerBlock;
 
-    size_t totalCells = static_cast<size_t>(simulationParams.gridDimensions.x) * static_cast<size_t>(simulationParams.gridDimensions.y) * static_cast<size_t>(simulationParams.gridDimensions.z);
+    size_t totalCells = static_cast<size_t>(simulationParams -> gridDimensions.x) * static_cast<size_t>(simulationParams -> gridDimensions.y) * static_cast<size_t>(simulationParams -> gridDimensions.z);
 
     size_t arraySize = totalCells * sizeof(uint32_t);
 
@@ -1019,21 +1019,22 @@ void ParticlesKernel::buildCellRanges(){
 void ParticlesKernel::generateIDs() {
     constexpr unsigned int blockSize = 256;
 
-    unsigned int gridSize = ( simulationParams.particlesCount + blockSize - 1) / blockSize;
+    unsigned int gridSize = ( simulationParams -> particlesCount + blockSize - 1) / blockSize;
     generateIDsKernel << <gridSize, blockSize, 0, cudaContext->stream >> > (
         static_cast<CudaParticle*>(cudaBuffer),
-        simulationParams.particlesCount,
-        simulationParams.bounds.min,
-        simulationParams.gridDimensions,
-        simulationParams.cellSize,
+        simulationParams -> particlesCount,
+        simulationParams -> bounds.min,
+        simulationParams -> gridDimensions,
+        simulationParams -> cellSize,
         particleCellIds
     );
 }
 
-void ParticlesKernel::initialize(CudaContext& _cudaContext) {
+void ParticlesKernel::initialize(CudaContext& _cudaContext, GPUSimulationParams &_simulationParams ) {
     cudaContext = &_cudaContext;
+    simulationParams = &_simulationParams;
 
-    const unsigned int count = static_cast<unsigned int>(simulationParams.particlesCount);
+    const unsigned int count = static_cast<unsigned int>(simulationParams -> particlesCount);
     const size_t bytes = count * sizeof(uint32_t);
 
     cudaMalloc(reinterpret_cast<void**>(&particleCellIds), bytes);
@@ -1061,7 +1062,7 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext) {
 
     cudaMalloc(&sortTempStorage, sortTempStorageBytes);
 
-    size_t totalCells = static_cast<size_t>(simulationParams.gridDimensions.x) * static_cast<size_t>(simulationParams.gridDimensions.y) * static_cast<size_t>(simulationParams.gridDimensions.z);
+    size_t totalCells = static_cast<size_t>(simulationParams -> gridDimensions.x) * static_cast<size_t>(simulationParams -> gridDimensions.y) * static_cast<size_t>(simulationParams -> gridDimensions.z);
     size_t rangeArraySize = totalCells * sizeof(uint32_t);
 
     cudaMalloc(&cellStart, rangeArraySize);
@@ -1071,7 +1072,7 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext) {
     cudaMemsetAsync(cellStart, 0xFF, rangeArraySize, cudaContext->stream);
     cudaMemsetAsync(cellEnd, 0xFF, rangeArraySize, cudaContext->stream);
 
-    cudaMalloc( &neighborCounts, simulationParams.particlesCount * sizeof(uint32_t) );
+    cudaMalloc( &neighborCounts, simulationParams -> particlesCount * sizeof(uint32_t) );
 
     initializeBoundaryGrid();
 }
@@ -1158,7 +1159,7 @@ __global__ void findNeighborsKernel(
 
 void ParticlesKernel::findNeighbors()
 {
-    uint32_t count = simulationParams.particlesCount;
+    uint32_t count = simulationParams -> particlesCount;
 
     if (count == 0)
         return;
@@ -1174,19 +1175,19 @@ void ParticlesKernel::findNeighbors()
         cellEnd,
         neighborCounts,
         count,
-        simulationParams.bounds.min,
+        simulationParams -> bounds.min,
         make_uint3(
-            static_cast<uint32_t>(simulationParams.gridDimensions.x),
-            static_cast<uint32_t>(simulationParams.gridDimensions.y),
-            static_cast<uint32_t>(simulationParams.gridDimensions.z)
+            static_cast<uint32_t>(simulationParams -> gridDimensions.x),
+            static_cast<uint32_t>(simulationParams -> gridDimensions.y),
+            static_cast<uint32_t>(simulationParams -> gridDimensions.z)
         ),
-        simulationParams.cellSize,
-        simulationParams.smoothingRadius
+        simulationParams -> cellSize,
+        simulationParams -> smoothingRadius
     );
 }
 
 void ParticlesKernel::sortIDs() {
-    const unsigned int count = static_cast<unsigned int>(simulationParams.particlesCount);
+    const unsigned int count = static_cast<unsigned int>(simulationParams -> particlesCount);
 
     cub::DeviceRadixSort::SortPairs(
         sortTempStorage,
@@ -1205,8 +1206,8 @@ void ParticlesKernel::sortIDs() {
 void ParticlesKernel::updateParticles( float deltaTime) {
 
     constexpr int blockSize = 256;
-    unsigned int gridSize = (simulationParams.particlesCount + blockSize - 1) / blockSize;
-    updateKernel << <gridSize, blockSize, 0, cudaContext->stream >> > (static_cast<CudaParticle*>(cudaBuffer), simulationParams.particlesCount, deltaTime, simulationParams.gravity, simulationParams.bounds.min, simulationParams.bounds.max, simulationParams.particleRadius, simulationParams.restitution);
+    unsigned int gridSize = (simulationParams -> particlesCount + blockSize - 1) / blockSize;
+    updateKernel << <gridSize, blockSize, 0, cudaContext->stream >> > (static_cast<CudaParticle*>(cudaBuffer), simulationParams -> particlesCount, deltaTime, simulationParams -> gravity, simulationParams -> bounds.min, simulationParams -> bounds.max, simulationParams -> particleRadius, simulationParams -> restitution);
 
 }
 

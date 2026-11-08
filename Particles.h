@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine.h"
+#include "CPUSimulationParams.h"
 
 #include <cmath>      
 #include <random>      
@@ -40,15 +41,9 @@ class Particles {
 		VkDescriptorSet BPDescriptorSet;
 		VkDescriptorSetLayout BPDescriptorSetLayout;
 
-		float spacing = 0.04f;
-		float jitterFactor = 0.05f;
-		uint32_t layers = 3;
+		CPUSimulationParams* simulationParams = nullptr;
 
 	public:
-		void initialize(Engine& _engine) {
-			engine = &_engine;
-		}
-
 		void memoryAllocator( Engine::BufferHandle &BufferHandle, size_t size, VkDescriptorSet &descriptorSet, VkDescriptorSetLayout &descriptorSetLayout ) {
 			BufferHandle.size = size;
 			engine->resourceManager.setupBuffer(BufferHandle, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true);
@@ -81,14 +76,19 @@ class Particles {
 			engine->resourceManager.updateDescriptorSet(bufferUpdate);
 		}
 
-		void generateBoundaryParticles(const glm::vec3& boundsMin, const glm::vec3& boundsMax) {
+		void generateBoundaryParticles() {
+
+			const glm::vec3 boundsMin = simulationParams->bounds.min;
+			const glm::vec3 boundsMax = simulationParams->bounds.max;
+			const uint32_t boundsParticlesCound = simulationParams->boundaryParticlesCount;
+
 			glm::vec3 dimensions = boundsMax - boundsMin;
 
-			uint32_t countX = static_cast<uint32_t>( std::floor(dimensions.x / spacing)) + 1;
-			uint32_t countY = static_cast<uint32_t>( std::floor(dimensions.y / spacing)) + 1;
-			uint32_t countZ = static_cast<uint32_t>( std::floor(dimensions.z / spacing)) + 1;
+			uint32_t countX = static_cast<uint32_t>( std::floor(dimensions.x / simulationParams->boundarySpacing)) + 1;
+			uint32_t countY = static_cast<uint32_t>( std::floor(dimensions.y / simulationParams->boundarySpacing)) + 1;
+			uint32_t countZ = static_cast<uint32_t>( std::floor(dimensions.z / simulationParams->boundarySpacing)) + 1;
 		
-			boundaryParticles.reserve( 2 * layers * (countX * countY + countY * countZ + countX * countZ) );
+			boundaryParticles.reserve( 2 * simulationParams->boundaryLayers * (countX * countY + countY * countZ + countX * countZ) );
 
 			auto addBoundaryParticle = [&](float x, float y, float z) {
 				BoundaryParticle particle{};
@@ -97,16 +97,16 @@ class Particles {
 			};
 
 			// X-facing walls
-			for (uint32_t layer = 0; layer < layers; ++layer)
+			for (uint32_t layer = 0; layer < simulationParams->boundaryLayers; ++layer)
 			{
-				float offset = layer * spacing;
+				float offset = layer * simulationParams->boundarySpacing;
 
 				for (uint32_t y = 0; y < countY; ++y)
 				{
 					for (uint32_t z = 0; z < countZ; ++z)
 					{
-						float py = boundsMin.y + y * spacing;
-						float pz = boundsMin.z + z * spacing;
+						float py = boundsMin.y + y * simulationParams->boundarySpacing;
+						float pz = boundsMin.z + z * simulationParams->boundarySpacing;
 
 						addBoundaryParticle(boundsMin.x - offset, py, pz);
 						addBoundaryParticle(boundsMax.x + offset, py, pz);
@@ -115,16 +115,16 @@ class Particles {
 			}
 
 			// Y-facing walls (exclude X-edge columns)
-			for (uint32_t layer = 0; layer < layers; ++layer)
+			for (uint32_t layer = 0; layer < simulationParams->boundaryLayers; ++layer)
 			{
-				float offset = layer * spacing;
+				float offset = layer * simulationParams->boundarySpacing;
 
 				for (uint32_t x = 1; x + 1 < countX; ++x)
 				{
 					for (uint32_t z = 0; z < countZ; ++z)
 					{
-						float px = boundsMin.x + x * spacing;
-						float pz = boundsMin.z + z * spacing;
+						float px = boundsMin.x + x * simulationParams->boundarySpacing;
+						float pz = boundsMin.z + z * simulationParams->boundarySpacing;
 
 						addBoundaryParticle(px, boundsMin.y - offset, pz);
 						addBoundaryParticle(px, boundsMax.y + offset, pz);
@@ -133,16 +133,16 @@ class Particles {
 			}
 
 			// Z-facing walls (exclude X and Y edges)
-			for (uint32_t layer = 0; layer < layers; ++layer)
+			for (uint32_t layer = 0; layer < simulationParams->boundaryLayers; ++layer)
 			{
-				float offset = layer * spacing;
+				float offset = layer * simulationParams->boundarySpacing;
 
 				for (uint32_t x = 1; x + 1 < countX; ++x)
 				{
 					for (uint32_t y = 1; y + 1 < countY; ++y)
 					{
-						float px = boundsMin.x + x * spacing;
-						float py = boundsMin.y + y * spacing;
+						float px = boundsMin.x + x * simulationParams->boundarySpacing;
+						float py = boundsMin.y + y * simulationParams->boundarySpacing;
 
 						addBoundaryParticle(px, py, boundsMin.z - offset);
 						addBoundaryParticle(px, py, boundsMax.z + offset);
@@ -152,21 +152,23 @@ class Particles {
 
 			memoryAllocator(BPHandle, boundaryParticles.size() * sizeof(BoundaryParticle), BPDescriptorSet, BPDescriptorSetLayout);
 			engine->resourceManager.copyDataIntoBuffer(BPHandle.allocationInfo.pMappedData, boundaryParticles.data(), BPHandle.size);
+
+			simulationParams->boundaryParticlesCount = static_cast< uint32_t > ( boundaryParticles.size() );
 		}
 
-		void generate(int count, float radius ) {
-			particleGeometry = engine->solidShapes.generateSphere(32, 32,radius );
+		void generate() {
+			particleGeometry = engine->solidShapes.generateSphere(32, 32, simulationParams->particleRadius );
 
-			particles.resize(count);
+			particles.resize( simulationParams->particlesCount );
 
 			const uint32_t particlesPerAxis = std::ceil( std::cbrt(particles.size()));
 
 			//spacing affects rest density, radius is just for visual / collision
-			const float jitter = spacing * jitterFactor;
+			const float jitter = simulationParams->latticeSpacing * simulationParams->latticeJitter;
 			std::mt19937 rng(std::random_device{}());
 			std::uniform_real_distribution<float> jitterDistribution(-jitter, jitter);
 
-			const glm::vec3 latticeStart( -0.5f * spacing * (particlesPerAxis - 1) );
+			const glm::vec3 latticeStart( -0.5f * simulationParams->latticeSpacing * (particlesPerAxis - 1) );
 
 			unsigned int index = 0;
 
@@ -181,7 +183,7 @@ class Particles {
 
 						Particle& p = particles[index];
 
-						glm::vec3 position( x * spacing + jitterDistribution(rng), y * spacing + jitterDistribution(rng), z * spacing + jitterDistribution(rng) );
+						glm::vec3 position( x * simulationParams->latticeSpacing + jitterDistribution(rng), y * simulationParams->latticeSpacing + jitterDistribution(rng), z * simulationParams->latticeSpacing + jitterDistribution(rng) );
 						position = latticeStart + position;
 
 						p.position = glm::vec4(position, 0.0f);
@@ -200,6 +202,14 @@ class Particles {
 			GENERATION_DONE:
 				memoryAllocator(PBHandle, particles.size() * sizeof(Particle), PBDescriptorSet, PBDescriptorSetLayout );
 				engine->resourceManager.copyDataIntoBuffer(PBHandle.allocationInfo.pMappedData, particles.data(), PBHandle.size);
+		}
+
+		void generate(Engine& _engine, CPUSimulationParams& _simulationParams) {
+			engine = &_engine;
+			simulationParams = &_simulationParams;
+
+			generate();
+			generateBoundaryParticles();
 		}
 
 		int count() {

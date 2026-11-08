@@ -2,10 +2,9 @@
 #include "Particles.h"
 #include "engine.h"
 
-#include<glm/gtc/matrix_transform.hpp>
-#include<glm/gtc/quaternion.hpp>
+#include "CPUSimulationParams.h"
 
-#include<iostream>
+#include<glm/gtc/matrix_transform.hpp>
 
 //NOTE: I think we should also add the ability to dump data from shader / cuda and read it in CPU 
 // We may already be able to do that through interop but still
@@ -38,6 +37,8 @@ class Wisp {
 	//Particles
 	Particles particles;
 
+	CPUSimulationParams simulationParams;
+
 	struct UniformData {
 		glm::mat4 model = glm::mat4(1.0f);
 		glm::mat4 view = glm::mat4(1.0f);
@@ -51,39 +52,6 @@ class Wisp {
 	} camera;
 
 	float deltaTime = 0.0f;
-
-	//Please add spacing param, and see how the radius particle relation with it
-	struct SimulationParams {
-		
-		float gravity = -9.81f;
-
-		float particleRadius = 0.02f;
-		float restitution = 0.8f;
-		float smoothingRadius = 0.08f;
-		float mass = 1.0f;
-		float viscosityCoefficient = 0.1f;
-
-		uint32_t boundaryParticlesCount;
-		float boundaryParticleMass;
-
-		int particlesCount = 20000;
-
-		float restDensity = 0.0f;
-		float gasConstant = 0.0f;
-
-		float cellSize = 0.04f;
-
-		struct SimulationBounds {
-			glm::vec3 min = glm::vec3(-2.0f);
-			glm::vec3 max = glm::vec3(2.0f);
-			glm::vec3 dimensions = max - min;
-		} bounds;
-
-		glm::uvec3 gridDimensions = glm::uvec3(
-			glm::ceil( bounds.dimensions / cellSize)
-		);
-	} simulationParams;
-
 	void setupUB(){
 		UBHandle.size = sizeof( UniformData );
 		engine.resourceManager.setupBuffer(UBHandle, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true);
@@ -170,11 +138,9 @@ class Wisp {
 	}
 
 	void generateParticles() {
-		particles.initialize(engine);
-		particles.generate( simulationParams.particlesCount, simulationParams.particleRadius );
-		particles.generateBoundaryParticles(simulationParams.bounds.min, simulationParams.bounds.max);
+		particles.generate( engine, simulationParams );
 
-		HANDLE PsharedHandle = engine.resourceManager.exportBuffer( particles.PBHandle );
+		HANDLE PsharedHandle = engine.resourceManager.exportBuffer(particles.PBHandle);
 
 		CudaInterface::CudaBuffer PResult = cudaInterface.cudaContext.importBuffer(
 			PsharedHandle,
@@ -197,72 +163,6 @@ class Wisp {
 		cudaInterface.particlesKernel.BPexternalMemory = BPResult.externalMemory;
 	}
 
-	void setupCUDA() {
-		constexpr float boundarySpacing = 0.04f;
-
-		float boundaryParticleMass = simulationParams.restDensity *
-			boundarySpacing * boundarySpacing * boundarySpacing;
-
-		simulationParams.boundaryParticleMass = boundaryParticleMass;
-
-
-		//VERY STUPID BTW, WILL REPLACE LATER
-		cudaInterface.simulationParams.gravity = simulationParams.gravity;
-		cudaInterface.simulationParams.particleRadius = simulationParams.particleRadius;
-		cudaInterface.simulationParams.restitution = simulationParams.restitution;
-		cudaInterface.simulationParams.bounds.max = make_float3( simulationParams.bounds.max.x, simulationParams.bounds.max.y, simulationParams.bounds.max.z );
-		cudaInterface.simulationParams.bounds.min = make_float3( simulationParams.bounds.min.x, simulationParams.bounds.min.y, simulationParams.bounds.min.z);
-		cudaInterface.simulationParams.bounds.dimensions = make_float3(
-			simulationParams.bounds.max.x - simulationParams.bounds.min.x,
-			simulationParams.bounds.max.y - simulationParams.bounds.min.y,
-			simulationParams.bounds.max.z - simulationParams.bounds.min.z
-		);
-		cudaInterface.simulationParams.particlesCount = simulationParams.particlesCount;
-		cudaInterface.simulationParams.cellSize = simulationParams.cellSize;
-		cudaInterface.simulationParams.smoothingRadius = simulationParams.smoothingRadius;
-		cudaInterface.simulationParams.mass = simulationParams.mass;
-		cudaInterface.simulationParams.viscosityCoefficient = simulationParams.viscosityCoefficient;
-
-		cudaInterface.simulationParams.gasConstant = simulationParams.gasConstant;
-
-		cudaInterface.simulationParams.restDensity = simulationParams.restDensity;
-
-		cudaInterface.simulationParams.gridDimensions = make_uint3(simulationParams.gridDimensions.x, simulationParams.gridDimensions.y, simulationParams.gridDimensions.z);
-
-		cudaInterface.simulationParams.boundaryParticleMass = simulationParams.boundaryParticleMass;
-
-		cudaInterface.simulationParams.boundaryParticlesCount = static_cast<uint32_t>(particles.boundaryParticles.size());
-
-
-		//2ND TIME FOR PARTICLES CLASS
-		cudaInterface.particlesKernel.simulationParams.gravity = simulationParams.gravity;
-		cudaInterface.particlesKernel.simulationParams.particleRadius = simulationParams.particleRadius;
-		cudaInterface.particlesKernel.simulationParams.restitution = simulationParams.restitution;
-		cudaInterface.particlesKernel.simulationParams.bounds.max = make_float3(simulationParams.bounds.max.x, simulationParams.bounds.max.y, simulationParams.bounds.max.z);
-		cudaInterface.particlesKernel.simulationParams.bounds.min = make_float3(simulationParams.bounds.min.x, simulationParams.bounds.min.y, simulationParams.bounds.min.z);
-		cudaInterface.particlesKernel.simulationParams.bounds.dimensions = make_float3(
-			simulationParams.bounds.max.x - simulationParams.bounds.min.x,
-			simulationParams.bounds.max.y - simulationParams.bounds.min.y,
-			simulationParams.bounds.max.z - simulationParams.bounds.min.z
-		);
-		cudaInterface.particlesKernel.simulationParams.particlesCount = simulationParams.particlesCount;
-		cudaInterface.particlesKernel.simulationParams.cellSize = simulationParams.cellSize;
-		cudaInterface.particlesKernel.simulationParams.smoothingRadius = simulationParams.smoothingRadius;
-		cudaInterface.particlesKernel.simulationParams.mass = simulationParams.mass;
-		cudaInterface.particlesKernel.simulationParams.gasConstant = simulationParams.gasConstant;
-		cudaInterface.particlesKernel.simulationParams.viscosityCoefficient = simulationParams.viscosityCoefficient;
-
-		cudaInterface.particlesKernel.simulationParams.restDensity = simulationParams.restDensity;
-		cudaInterface.particlesKernel.simulationParams.gridDimensions = make_uint3( simulationParams.gridDimensions.x, simulationParams.gridDimensions.y, simulationParams.gridDimensions.z );
-
-		cudaInterface.particlesKernel.simulationParams.boundaryParticleMass = simulationParams.boundaryParticleMass;
-
-		cudaInterface.particlesKernel.simulationParams.boundaryParticlesCount = static_cast<uint32_t>(particles.boundaryParticles.size());
-
-
-		cudaInterface.initialize(engine.vulkanContext.physicalDeviceIF.uuid );
-	}
-
 	void setup() {
 		engine.configure("Wisp", VK_API_VERSION_1_4);
 
@@ -271,7 +171,11 @@ class Wisp {
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 }
 		});
 
-		setupCUDA();
+		generateParticles();
+
+		setupUB();
+
+		generatePipeline();
 
 		vkToCuda = engine.vulkanContext.createExportableSemaphore();
 		cudaToVk = engine.vulkanContext.createExportableSemaphore();
@@ -282,9 +186,7 @@ class Wisp {
 		cudaInterface.particlesKernel.vkToCuda = cudaInterface.importSemaphore( vkToCudaHandle );
 		cudaInterface.particlesKernel.cudaToVk = cudaInterface.importSemaphore( cudaToVkHandle );
 
-		setupUB();
-		generateParticles();
-		generatePipeline();
+		cudaInterface.initialize(engine.vulkanContext.physicalDeviceIF.uuid, simulationParams);
 
 		cudaInterface.particlesKernel.signalCudaFinished();
 	}

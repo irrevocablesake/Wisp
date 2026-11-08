@@ -2,6 +2,7 @@
 
 #include <cuda_runtime.h>
 #include "CudaContext.h"
+#include "GPUSimulationParams.h"
 
 class ParticlesKernel {
 	public:
@@ -47,32 +48,7 @@ class ParticlesKernel {
 			float4 position{};
 		};
 
-		struct SimulationParams {
-			float gravity;
-
-			uint32_t boundaryParticlesCount;
-			float boundaryParticleMass;
-
-			float particleRadius;
-			float restitution;
-			float smoothingRadius;
-			float mass;
-
-			float viscosityCoefficient;
-			float restDensity;
-			float gasConstant;
-
-			int particlesCount;
-			float cellSize;
-
-			struct SimulationBounds {
-				float3 min;
-				float3 max;
-				float3 dimensions;
-			} bounds;
-
-			uint3 gridDimensions;
-		} simulationParams;
+		const GPUSimulationParams *simulationParams = nullptr;
 
 		uint32_t* boundaryParticleCellIds = nullptr;
 		uint32_t* sortedBoundaryCellIds = nullptr;
@@ -89,7 +65,7 @@ class ParticlesKernel {
 		uint3 boundaryGridDimensions{};
 		void initializeBoundaryGrid();
 
-		void initialize( CudaContext &_cudaContext );
+		void initialize( CudaContext& _cudaContext, GPUSimulationParams& _simulationParams );
 
 		void updateParticles( float deltaTime );
 		void generateIDs();
