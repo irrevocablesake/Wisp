@@ -29,7 +29,7 @@ public:
         ResourceManager::BufferHandle IHandle;
 	};
 
-	Geometry generateSphere( uint32_t segments, uint32_t rings ) {
+	Geometry generateSphere( uint32_t segments, uint32_t rings, float radius ) {
 		Geometry geometry;
 
         for (uint32_t y = 0; y <= rings; ++y)
@@ -47,6 +47,8 @@ public:
                     std::cos(phi),
                     std::sin(phi) * std::sin(theta)
                 };
+
+                position = position * radius;
 
                 geometry.vertices.push_back({
                     position,

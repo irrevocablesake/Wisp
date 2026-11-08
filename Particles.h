@@ -154,8 +154,8 @@ class Particles {
 			engine->resourceManager.copyDataIntoBuffer(BPHandle.allocationInfo.pMappedData, boundaryParticles.data(), BPHandle.size);
 		}
 
-		void generate(int count) {
-			particleGeometry = engine->solidShapes.generateSphere(32, 32);
+		void generate(int count, float radius ) {
+			particleGeometry = engine->solidShapes.generateSphere(32, 32,radius );
 
 			particles.resize(count);
 

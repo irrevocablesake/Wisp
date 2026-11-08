@@ -39,7 +39,7 @@ class Wisp {
 	Particles particles;
 
 	struct UniformData {
-		glm::mat4 model = glm::scale( glm::mat4(1.0f), glm::vec3(0.02f) );
+		glm::mat4 model = glm::mat4(1.0f);
 		glm::mat4 view = glm::mat4(1.0f);
 		glm::mat4 projection = glm::mat4(1.0f);
 	} uniformData;
@@ -168,7 +168,7 @@ class Wisp {
 
 	void generateParticles() {
 		particles.initialize(engine);
-		particles.generate( simulationParams.particlesCount );
+		particles.generate( simulationParams.particlesCount, simulationParams.particleRadius );
 		particles.generateBoundaryParticles(simulationParams.bounds.min, simulationParams.bounds.max);
 
 		HANDLE PsharedHandle = engine.resourceManager.exportBuffer( particles.PBHandle );
