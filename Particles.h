@@ -178,7 +178,7 @@ class Particles {
 		}
 
 		void generate() {
-			particleGeometry = engine->solidShapes.generateSphere(32, 32, simulationParams->particleRadius );
+			particleGeometry = engine->solidShapes.generateSphere(4, 4, simulationParams->particleRadius );
 
 			particles.resize( simulationParams->particlesCount );
 
