@@ -21,6 +21,7 @@ struct CPUSimulationParams {
 	float restDensity = 1000.0f;
 
 	int particlesCount = 40960;
+	//int particlesCount = 131072;
 
 	float gasConstant = 0.006f;
 

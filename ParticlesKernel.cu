@@ -8,9 +8,9 @@
 __device__ float calculateBoundaryDensityContribution(
     float3 position,
     const ParticlesKernel::BoundaryParticle* boundaryParticles,
-    const uint32_t* sortedBoundaryParticleIndices,
-    const uint32_t* boundaryCellStart,
-    const uint32_t* boundaryCellEnd,
+    const uint32_t* __restrict__ sortedBoundaryParticleIndices,
+    const uint32_t* __restrict__ boundaryCellStart,
+    const uint32_t* __restrict__ boundaryCellEnd,
     float boundaryParticleMass,
     float smoothingRadius,
     float3 gridOrigin,
@@ -64,22 +64,22 @@ __device__ float calculateBoundaryDensityContribution(
                     (neighbourCell.y +
                         gridDimensions.y * neighbourCell.z);
 
-                const uint32_t start = boundaryCellStart[cellID];
+                const uint32_t start = __ldg(&boundaryCellStart[cellID]);
 
                 if (start == UINT_MAX)
                     continue;
 
-                const uint32_t end = boundaryCellEnd[cellID];
+                const uint32_t end = __ldg(&boundaryCellEnd[cellID]);
 
                 for (uint32_t i = start; i < end; ++i)
                 {
-                    const uint32_t boundaryID =
-                        sortedBoundaryParticleIndices[i];
+                    const uint32_t boundaryID = __ldg(&sortedBoundaryParticleIndices[i]);
+                    const ParticlesKernel::BoundaryParticle* bPtr = &boundaryParticles[boundaryID];
 
                     const float3 boundaryPosition = make_float3(
-                        boundaryParticles[boundaryID].position.x,
-                        boundaryParticles[boundaryID].position.y,
-                        boundaryParticles[boundaryID].position.z
+                        __ldg(&bPtr->position.x),
+                        __ldg(&bPtr->position.y),
+                        __ldg(&bPtr->position.z)
                     );
 
                     const float dx = position.x - boundaryPosition.x;
@@ -221,19 +221,19 @@ __global__ void updateKernel(
 //Note: Function from the paper, just use as an abstraction - will understand later, basically says: How much influcence P2 will have on P1 based on r and h, returns a weight
 
 //NOTE: We can modify this function to use findNeighbours - just quite a repeattion of code, will fix later - bored for this now
-__global__ void calculateDensityAndPressureKernel(
+__global__ void __launch_bounds__(512, 2) calculateDensityAndPressureKernel(
     ParticlesKernel::CudaParticle* particles,
 
     const ParticlesKernel::BoundaryParticle* boundaryParticles,
     uint32_t boundaryParticlesCount,
 
-    const uint32_t* sortedParticleIndices,
-    const uint32_t* cellStart,
-    const uint32_t* cellEnd,
+    const uint32_t* __restrict__ sortedParticleIndices,
+    const uint32_t* __restrict__ cellStart,
+    const uint32_t* __restrict__ cellEnd,
 
-    const uint32_t* sortedBoundaryParticleIndices,
-    const uint32_t* boundaryCellStart,
-    const uint32_t* boundaryCellEnd,
+    const uint32_t* __restrict__ sortedBoundaryParticleIndices,
+    const uint32_t* __restrict__ boundaryCellStart,
+    const uint32_t* __restrict__ boundaryCellEnd,
 
     uint32_t particleCount,
 
@@ -298,16 +298,20 @@ __global__ void calculateDensityAndPressureKernel(
 
                 uint32_t cellID = neighborCell.x + gridDimensions.x * (neighborCell.y + gridDimensions.y * neighborCell.z);
 
-                if (cellStart[cellID] == UINT_MAX)
+                uint32_t start = __ldg(&cellStart[cellID]);
+                uint32_t end = __ldg(&cellEnd[cellID]);
+
+                if (start == UINT_MAX)
                     continue;
 
-                for (uint32_t i = cellStart[cellID]; i < cellEnd[cellID]; ++i) {
-                    uint32_t otherID = sortedParticleIndices[i];
+                for (uint32_t i = start; i < end; ++i) {
+                    uint32_t otherID = __ldg(&sortedParticleIndices[i]);
 
+                    const ParticlesKernel::CudaParticle* otherPtr = &particles[otherID];
                     float3 otherPosition = make_float3(
-                        particles[otherID].position.x,
-                        particles[otherID].position.y,
-                        particles[otherID].position.z
+                        __ldg(&otherPtr->position.x),
+                        __ldg(&otherPtr->position.y),
+                        __ldg(&otherPtr->position.z)
                     );
 
                     float3 difference = make_float3(
@@ -356,7 +360,7 @@ __global__ void calculateDensityAndPressureKernel(
 
 }
 
-__global__ void calculatePressureAndViscosityForcesKernel(
+__global__ void __launch_bounds__(512, 2) calculatePressureAndViscosityForcesKernel(
     ParticlesKernel::CudaParticle* particles,
     uint32_t particleCount,
     float particleMass,
@@ -369,9 +373,9 @@ __global__ void calculatePressureAndViscosityForcesKernel(
     float cellSize,
     uint3 gridDimensions,
 
-    const uint32_t* sortedParticleIndices,
-    const uint32_t* cellStart,
-    const uint32_t* cellEnd
+    const uint32_t* __restrict__ sortedParticleIndices,
+    const uint32_t* __restrict__ cellStart,
+    const uint32_t* __restrict__ cellEnd
     )
 {
     uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -431,24 +435,28 @@ __global__ void calculatePressureAndViscosityForcesKernel(
 
                 uint32_t cellId = neighbourCell.x + gridDimensions.x * (neighbourCell.y + gridDimensions.y * neighbourCell.z);
 
-                uint32_t start = cellStart[cellId];
-                uint32_t end = cellEnd[cellId];
+                uint32_t start = __ldg(&cellStart[cellId]);
+                uint32_t end = __ldg(&cellEnd[cellId]);
 
                 if (start == UINT_MAX)
                     continue;
 
                 for (uint32_t k = start; k < end; ++k) {
-                    uint32_t j = sortedParticleIndices[k];
+                    uint32_t j = __ldg(&sortedParticleIndices[k]);
 
                     if (i == j)
                         continue;
 
-                    const ParticlesKernel::CudaParticle neighbour = particles[j];
+                    const ParticlesKernel::CudaParticle* nPtr = &particles[j];
+                    float3 nPos = make_float3(__ldg(&nPtr->position.x), __ldg(&nPtr->position.y), __ldg(&nPtr->position.z));
+                    float3 nVel = make_float3(__ldg(&nPtr->velocity.x), __ldg(&nPtr->velocity.y), __ldg(&nPtr->velocity.z));
+                    float nDensity = __ldg(&nPtr->density);
+                    float nPress = __ldg(&nPtr->pressure);
 
                     float3 displacement = make_float3(
-                        position.x - neighbour.position.x,
-                        position.y - neighbour.position.y,
-                        position.z - neighbour.position.z
+                        position.x - nPos.x,
+                        position.y - nPos.y,
+                        position.z - nPos.z
                     );
 
                     float distanceSquared = 
@@ -460,7 +468,7 @@ __global__ void calculatePressureAndViscosityForcesKernel(
                         float distance = sqrtf(distanceSquared);
                         float difference = smoothingRadius - distance;
 
-                        float neighbourDensity = fmaxf(neighbour.density, 1e-6f);
+                        float neighbourDensity = fmaxf(nDensity, 1e-6f);
 
                         // Pressure force
                         float gradientMagnitude = spikyCoefficient * difference * difference;
@@ -471,7 +479,7 @@ __global__ void calculatePressureAndViscosityForcesKernel(
                             gradientMagnitude * displacement.z / distance
                         );
 
-                        float averagePressure = 0.5f * (particle.pressure + neighbour.pressure);
+                        float averagePressure = 0.5f * (particle.pressure + nPress);
 
                         float pressureScale = -particleMass * averagePressure / neighbourDensity;
 
@@ -483,9 +491,9 @@ __global__ void calculatePressureAndViscosityForcesKernel(
                         float laplacian = viscosityKernelCoefficient * difference;
 
                         float3 relativeVelocity = make_float3(
-                            neighbour.velocity.x - velocity.x,
-                            neighbour.velocity.y - velocity.y,
-                            neighbour.velocity.z - velocity.z
+                            nVel.x - velocity.x,
+                            nVel.y - velocity.y,
+                            nVel.z - velocity.z
                         );
 
                         float viscosityScale = viscosityCoefficient * particleMass * particleMass * laplacian / neighbourDensity;
