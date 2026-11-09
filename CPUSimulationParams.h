@@ -17,11 +17,11 @@ struct CPUSimulationParams {
 	float smoothingRadius = 0.08f;
 	float mass = 1.0f;
 	float viscosityCoefficient = 0.1f;
-	float restDensity = 0.0f;
+	float restDensity = 1000.0f;
 
-	int particlesCount = 20000;
+	int particlesCount = 1000;
 
-	float gasConstant = 0.0f;
+	float gasConstant = 0.006f;
 
 	float cellSize = 0.04f;
 

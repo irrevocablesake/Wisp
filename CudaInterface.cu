@@ -19,8 +19,7 @@ void CudaInterface::simulate() {
 	particlesKernel.sortIDs();
 	particlesKernel.buildCellRanges();
 	particlesKernel.calculateDensityAndPressure();
-	particlesKernel.calculatePressureForces();
-	particlesKernel.calculateViscosityForces();
+	particlesKernel.calculatePressureAndViscosityForces();
 	particlesKernel.updateParticles(0.005);
 
 	signalCudaFinished();

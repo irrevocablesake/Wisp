@@ -68,7 +68,6 @@ class ParticlesKernel {
 		void sortIDs();
 		void buildCellRanges();
 		void calculateDensityAndPressure();
-		void calculatePressureForces();
-		void calculateViscosityForces();
+		void calculatePressureAndViscosityForces();
 
 };
