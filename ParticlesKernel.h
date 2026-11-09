@@ -11,6 +11,7 @@ class ParticlesKernel {
 
 		int THREADS_PER_BLOCK = 0;
 		int BLOCKS_COUNT = 0;
+		float POLY6_COEFFICIENT = 0;
 		
 		cudaExternalMemory_t externalMemory{};
 		void* cudaBuffer = nullptr;
@@ -30,9 +31,6 @@ class ParticlesKernel {
 		uint32_t* cellEnd = nullptr;
 
 		uint32_t* neighborCounts = nullptr;
-
-		void calculateDensity();
-
 
 		struct CudaParticle {
 			float4 position;
@@ -71,7 +69,7 @@ class ParticlesKernel {
 		void generateIDs();
 		void sortIDs();
 		void buildCellRanges();
-		void calculatePressure();
+		void calculateDensityAndPressure();
 		void calculatePressureForces();
 		void calculateViscosityForces();
 

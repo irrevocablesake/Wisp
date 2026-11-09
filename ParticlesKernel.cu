@@ -270,7 +270,7 @@ __global__ void updateKernel(
 //Note: Function from the paper, just use as an abstraction - will understand later, basically says: How much influcence P2 will have on P1 based on r and h, returns a weight
 
 //NOTE: We can modify this function to use findNeighbours - just quite a repeattion of code, will fix later - bored for this now
-__global__ void calculateDensityKernel(
+__global__ void calculateDensityAndPressureKernel(
     ParticlesKernel::CudaParticle* particles,
 
     const ParticlesKernel::BoundaryParticle* boundaryParticles,
@@ -298,7 +298,8 @@ __global__ void calculateDensityKernel(
     float cellSize,
 
     float3 boundaryGridOrigin,
-    uint3 boundaryGridDimensions)
+    uint3 boundaryGridDimensions,
+    float poly6Coefficient)
 {
     uint32_t particleID = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -314,9 +315,6 @@ __global__ void calculateDensityKernel(
     float density = 0.0f;
 
     float smoothingRadiusSquared = smoothingRadius * smoothingRadius;
-    float smoothingRadius9 = powf(smoothingRadius, 9.0f);
-    float poly6Coefficient =
-        315.0f / (64.0f * CUDART_PI_F * smoothingRadius9);
 
     int3 cell = make_int3(
         static_cast<int>(floorf((position.x - gridOrigin.x) / cellSize)),
@@ -400,23 +398,8 @@ __global__ void calculateDensityKernel(
     }
 
     particles[particleID].density = density;
-}
+    particles[particleID].pressure = gasConstant * fmaxf(density - restDensity, 0.0f);
 
-
-
-__global__ void calculatePressureKernel(
-    ParticlesKernel::CudaParticle* particles,
-    int particleCount,
-    float restDensity,
-    float gasConstant){
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (i >= particleCount)
-        return;
-
-    float density = particles[i].density;
-
-    particles[i].pressure = gasConstant * fmaxf(density - restDensity, 0.0f);
 }
 
 __global__ void calculatePressureForcesKernel(
@@ -865,21 +848,6 @@ void ParticlesKernel::initializeBoundaryGrid()
         );
 }
 
-void ParticlesKernel::calculatePressure() {
-
-
-    calculatePressureKernel << <
-        BLOCKS_COUNT,
-        THREADS_PER_BLOCK,
-        0,
-        cudaContext->stream
-        >> > (
-            static_cast<CudaParticle*>(cudaBuffer),
-            simulationParams->particlesCount,
-            simulationParams->restDensity,
-            simulationParams->gasConstant
-            );
-}
 
 void ParticlesKernel::buildCellRanges() {
     size_t totalCells = static_cast<size_t>(simulationParams->gridDimensions.x) * static_cast<size_t>(simulationParams->gridDimensions.y) * static_cast<size_t>(simulationParams->gridDimensions.z);
@@ -951,14 +919,14 @@ void ParticlesKernel::generateIDs() {
         );
 }
 
-void ParticlesKernel::calculateDensity() {
+void ParticlesKernel::calculateDensityAndPressure() {
 
     const uint32_t count = simulationParams->particlesCount;
 
     if (count == 0)
         return;
 
-    calculateDensityKernel << <
+    calculateDensityAndPressureKernel << <
         BLOCKS_COUNT,
         THREADS_PER_BLOCK,
         0,
@@ -991,8 +959,10 @@ void ParticlesKernel::calculateDensity() {
             simulationParams->cellSize,
 
             boundaryGridOrigin,
-            boundaryGridDimensions
-            );
+            boundaryGridDimensions,
+
+            POLY6_COEFFICIENT
+      );
 }
 
 void ParticlesKernel::calculateViscosityForces()
@@ -1067,6 +1037,10 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext, GPUSimulationParams 
     cudaMalloc( &neighborCounts, simulationParams -> particlesCount * sizeof(uint32_t) );
 
     initializeBoundaryGrid();
+
+    float smoothingRadiusSquared = simulationParams->smoothingRadius * simulationParams->smoothingRadius;
+    float smoothingRadius9 = powf(simulationParams->smoothingRadius, 9.0f);
+    POLY6_COEFFICIENT = 315.0f / (64.0f * CUDART_PI_F * smoothingRadius9);
 }
 
 void ParticlesKernel::updateParticles( float deltaTime) {
