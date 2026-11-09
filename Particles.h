@@ -154,6 +154,27 @@ class Particles {
 			engine->resourceManager.copyDataIntoBuffer(BPHandle.allocationInfo.pMappedData, boundaryParticles.data(), BPHandle.size);
 
 			simulationParams->boundaryParticlesCount = static_cast< uint32_t > ( boundaryParticles.size() );
+			float PADDING = 3.0f * simulationParams->boundarySpacing;
+
+			simulationParams->boundaryGridOrigin = glm::vec3(
+				boundsMin.x - PADDING,
+				boundsMin.y - PADDING,
+				boundsMin.z - PADDING
+			);
+
+			simulationParams->boundaryGridDimensions = glm::uvec3(
+				static_cast<uint32_t>(ceilf(
+					(boundsMax.x - boundsMin.x + 2.0f * PADDING) /
+					simulationParams->cellSize)) + 1,
+
+				static_cast<uint32_t>(ceilf(
+					(boundsMax.y - boundsMin.y + 2.0f * PADDING) /
+					simulationParams->cellSize)) + 1,
+
+				static_cast<uint32_t>(ceilf(
+					(boundsMax.z - boundsMin.z + 2.0f * PADDING) /
+					simulationParams->cellSize)) + 1
+			);
 		}
 
 		void generate() {

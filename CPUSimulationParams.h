@@ -37,4 +37,7 @@ struct CPUSimulationParams {
 	glm::uvec3 gridDimensions = glm::uvec3(
 		glm::ceil(bounds.dimensions / cellSize)
 	);
+
+	glm::vec3 boundaryGridOrigin{};
+	glm::uvec3 boundaryGridDimensions{};
 };

@@ -59,8 +59,6 @@ class ParticlesKernel {
 		void* boundarySortTempStorage = nullptr;
 		size_t boundarySortTempStorageBytes = 0;
 
-		float3 boundaryGridOrigin{};
-		uint3 boundaryGridDimensions{};
 		void initializeBoundaryGrid();
 
 		void initialize( CudaContext& _cudaContext, GPUSimulationParams& _simulationParams );

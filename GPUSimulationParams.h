@@ -6,6 +6,7 @@
 struct GPUSimulationParams {
 	float gravity;
 
+	float boundarySpacing;
 	uint32_t boundaryParticlesCount;
 	float boundaryParticleMass;
 
@@ -28,6 +29,8 @@ struct GPUSimulationParams {
 	} bounds;
 
 	uint3 gridDimensions;
+	float3 boundaryGridOrigin{};
+	uint3 boundaryGridDimensions{};
 };
 
 inline GPUSimulationParams toCudaParams(
@@ -38,6 +41,7 @@ inline GPUSimulationParams toCudaParams(
 	result.gravity = source.gravity;
 	result.boundaryParticlesCount = source.boundaryParticlesCount;
 	result.boundaryParticleMass = source.boundaryParticleMass;
+	result.boundarySpacing = source.boundarySpacing;
 	result.particleRadius = source.particleRadius;
 	result.restitution = source.restitution;
 	result.smoothingRadius = source.smoothingRadius;
@@ -51,6 +55,9 @@ inline GPUSimulationParams toCudaParams(
 	result.bounds.min = make_float3(source.bounds.min.x, source.bounds.min.y, source.bounds.min.z);
 	result.bounds.dimensions = make_float3(source.bounds.dimensions.x, source.bounds.dimensions.y, source.bounds.dimensions.z);
 	result.gridDimensions = make_uint3( source.gridDimensions.x, source.gridDimensions.y, source.gridDimensions.z );
+	result.boundaryGridOrigin = make_float3(source.boundaryGridOrigin.x, source.boundaryGridOrigin.y, source.boundaryGridOrigin.z);
+	result.boundaryGridDimensions = make_uint3(source.boundaryGridDimensions.x, source.boundaryGridDimensions.y, source.boundaryGridDimensions.z);
+
 
 	return result;
 }

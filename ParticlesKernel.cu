@@ -722,42 +722,10 @@ __global__ void calculateViscosityForcesKernel(
 
 void ParticlesKernel::initializeBoundaryGrid()
 {
-    //CERTAINLY, WE CAN REMOVE COUNT + USE VARIABLE FOR BOUNDARY_SPACING
-    const uint32_t count = simulationParams->boundaryParticlesCount;
+    const size_t particleBytes = simulationParams->boundaryParticlesCount * sizeof(uint32_t);
 
-    if (count == 0)
-        return;
-
-    constexpr float BOUNDARY_SPACING = 0.04f;
-
-    // The outermost boundary layer extends two spacings beyond the room.
-    // Add one extra spacing as padding for safe grid indexing.
-    constexpr float PADDING = 3.0f * BOUNDARY_SPACING;
-
-    float3 boundsMin = simulationParams->bounds.min;
-    float3 boundsMax = simulationParams->bounds.max;
-
-    boundaryGridOrigin = make_float3(
-        boundsMin.x - PADDING,
-        boundsMin.y - PADDING,
-        boundsMin.z - PADDING
-    );
-
-    boundaryGridDimensions = make_uint3(
-        static_cast<uint32_t>(ceilf(
-            (boundsMax.x - boundsMin.x + 2.0f * PADDING) /
-            simulationParams->cellSize)) + 1,
-
-        static_cast<uint32_t>(ceilf(
-            (boundsMax.y - boundsMin.y + 2.0f * PADDING) /
-            simulationParams->cellSize)) + 1,
-
-        static_cast<uint32_t>(ceilf(
-            (boundsMax.z - boundsMin.z + 2.0f * PADDING) /
-            simulationParams->cellSize)) + 1
-    );
-
-    const size_t particleBytes = count * sizeof(uint32_t);
+    const uint3& boundaryGridDimensions = simulationParams->boundaryGridDimensions;
+    const float3& boundaryGridOrigin = simulationParams->boundaryGridOrigin;
 
     const size_t totalCells =
         static_cast<size_t>(boundaryGridDimensions.x) *
@@ -779,12 +747,12 @@ void ParticlesKernel::initializeBoundaryGrid()
 
     initializeIndicesKernel << <BLOCKS_COUNT, THREADS_PER_BLOCK, 0, cudaContext->stream >> > (
         boundaryParticleIndices,
-        count
+        simulationParams->boundaryParticlesCount
         );
 
     generateIDsKernel << <BLOCKS_COUNT, THREADS_PER_BLOCK, 0, cudaContext->stream >> > (
         static_cast<const BoundaryParticle*>(BPcudaBuffer),
-        count,
+        simulationParams->boundaryParticlesCount,
         boundaryGridOrigin,
         boundaryGridDimensions,
         simulationParams->cellSize,
@@ -799,7 +767,7 @@ void ParticlesKernel::initializeBoundaryGrid()
         sortedBoundaryCellIds,
         boundaryParticleIndices,
         sortedBoundaryParticleIndices,
-        count,
+        simulationParams->boundaryParticlesCount,
         0,
         sizeof(uint32_t) * 8,
         cudaContext->stream
@@ -818,7 +786,7 @@ void ParticlesKernel::initializeBoundaryGrid()
         sortedBoundaryCellIds,
         boundaryParticleIndices,
         sortedBoundaryParticleIndices,
-        count,
+        simulationParams->boundaryParticlesCount,
         0,
         sizeof(uint32_t) * 8,
         cudaContext->stream
@@ -844,7 +812,7 @@ void ParticlesKernel::initializeBoundaryGrid()
         sortedBoundaryCellIds,
         boundaryCellStart,
         boundaryCellEnd,
-        count
+        simulationParams->boundaryParticlesCount
         );
 }
 
@@ -958,8 +926,8 @@ void ParticlesKernel::calculateDensityAndPressure() {
             simulationParams->gridDimensions,
             simulationParams->cellSize,
 
-            boundaryGridOrigin,
-            boundaryGridDimensions,
+            simulationParams->boundaryGridOrigin,
+            simulationParams->boundaryGridDimensions,
 
             POLY6_COEFFICIENT
       );
