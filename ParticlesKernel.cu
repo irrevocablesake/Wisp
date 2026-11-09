@@ -14,7 +14,8 @@ __device__ float calculateBoundaryDensityContribution(
     float3 gridOrigin,
     uint3 gridDimensions,
     float cellSize,
-    float poly6Coefficient)
+    float poly6Coefficient,
+    float searchRadius)
 {
     float density = 0.0f;
 
@@ -29,9 +30,6 @@ __device__ float calculateBoundaryDensityContribution(
     cell.x = max(0, min(cell.x, static_cast<int>(gridDimensions.x) - 1));
     cell.y = max(0, min(cell.y, static_cast<int>(gridDimensions.y) - 1));
     cell.z = max(0, min(cell.z, static_cast<int>(gridDimensions.z) - 1));
-
-    const int searchRadius =
-        static_cast<int>(ceilf(smoothingRadius / cellSize));
 
     for (int z = -searchRadius; z <= searchRadius; ++z)
     {
@@ -247,7 +245,8 @@ __global__ void calculateDensityAndPressureKernel(
 
     float3 boundaryGridOrigin,
     uint3 boundaryGridDimensions,
-    float poly6Coefficient)
+    float poly6Coefficient,
+    float searchRadius)
 {
     uint32_t particleID = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -269,9 +268,6 @@ __global__ void calculateDensityAndPressureKernel(
         static_cast<int>(floorf((position.y - gridOrigin.y) / cellSize)),
         static_cast<int>(floorf((position.z - gridOrigin.z) / cellSize))
     );
-
-
-    int searchRadius = static_cast<int>(ceilf(smoothingRadius / cellSize));
 
     for (int z = -searchRadius; z <= searchRadius; ++z)
     {
@@ -343,7 +339,8 @@ __global__ void calculateDensityAndPressureKernel(
             boundaryGridOrigin,
             boundaryGridDimensions,
             cellSize,
-            poly6Coefficient
+            poly6Coefficient,
+            searchRadius
         );
     }
 
@@ -367,7 +364,8 @@ __global__ void calculatePressureAndViscosityForcesKernel(
 
     const uint32_t* sortedParticleIndices,
     const uint32_t* cellStart,
-    const uint32_t* cellEnd)
+    const uint32_t* cellEnd,
+    float searchRadius)
 {
     uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -398,8 +396,6 @@ __global__ void calculatePressureAndViscosityForcesKernel(
         static_cast<int>(floorf((position.y - gridOrigin.y) / cellSize)),
         static_cast<int>(floorf((position.z - gridOrigin.z) / cellSize))
     );
-
-    int searchRadius = static_cast<int>( ceilf(smoothingRadius / cellSize) );
 
     for (int z = -searchRadius; z <= searchRadius; ++z)
     {
@@ -544,12 +540,12 @@ void ParticlesKernel::initializeBoundaryGrid()
     cudaMalloc(&boundaryCellEnd, cellBytes);
 
 
-    initializeIndicesKernel << <BLOCKS_COUNT, THREADS_PER_BLOCK, 0, cudaContext->stream >> > (
+    initializeIndicesKernel << < BOUNDARY_BLOCKS_COUNT, THREADS_PER_BLOCK, 0, cudaContext->stream >> > (
         boundaryParticleIndices,
         simulationParams->boundaryParticlesCount
         );
 
-    generateIDsKernel << <BLOCKS_COUNT, THREADS_PER_BLOCK, 0, cudaContext->stream >> > (
+    generateIDsKernel << <BOUNDARY_BLOCKS_COUNT, THREADS_PER_BLOCK, 0, cudaContext->stream >> > (
         static_cast<const BoundaryParticle*>(BPcudaBuffer),
         simulationParams->boundaryParticlesCount,
         boundaryGridOrigin,
@@ -607,7 +603,7 @@ void ParticlesKernel::initializeBoundaryGrid()
     );
 
     // Build ranges for occupied cells.
-    buildCellRangesKernel << <BLOCKS_COUNT, THREADS_PER_BLOCK, 0, cudaContext->stream >> > (
+    buildCellRangesKernel << <BOUNDARY_BLOCKS_COUNT, THREADS_PER_BLOCK, 0, cudaContext->stream >> > (
         sortedBoundaryCellIds,
         boundaryCellStart,
         boundaryCellEnd,
@@ -702,7 +698,8 @@ void ParticlesKernel::calculateDensityAndPressure() {
             simulationParams->boundaryGridOrigin,
             simulationParams->boundaryGridDimensions,
 
-            POLY6_COEFFICIENT
+            POLY6_COEFFICIENT,
+            SEARCH_RADIUS
       );
 }
 
@@ -729,7 +726,8 @@ void ParticlesKernel::calculatePressureAndViscosityForces()
 
             sortedParticleIndices,
             cellStart,
-            cellEnd
+            cellEnd,
+            SEARCH_RADIUS
         );
 }
 
@@ -737,8 +735,10 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext, GPUSimulationParams 
     cudaContext = &_cudaContext;
     simulationParams = &_simulationParams;
 
-    THREADS_PER_BLOCK = 256;
+    THREADS_PER_BLOCK = 512;
     BLOCKS_COUNT = (simulationParams->particlesCount + THREADS_PER_BLOCK - 1 ) / THREADS_PER_BLOCK;
+    BOUNDARY_BLOCKS_COUNT = (simulationParams->boundaryParticlesCount + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    SEARCH_RADIUS = static_cast<int>(ceilf(simulationParams->smoothingRadius / simulationParams->cellSize));
 
     const unsigned int count = static_cast<unsigned int>(simulationParams -> particlesCount);
     const size_t bytes = count * sizeof(uint32_t);

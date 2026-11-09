@@ -45,8 +45,14 @@ class Wisp {
 		glm::mat4 projection = glm::mat4(1.0f);
 	} uniformData;
 
+	//struct Camera {
+	//	glm::vec3 position{ 3.0f, 2.0f, 3.0f };
+	//	glm::vec3 cameraUp{ 0, 1, 0 };
+	//	glm::vec3 lookAt{ 0.0f, -2.0f, 0.0f };
+	//} camera;
+
 	struct Camera {
-		glm::vec3 position{ 3.0f, 2.0f, 3.0f };
+		glm::vec3 position{ 3.0f, -2.0f, 3.0f };
 		glm::vec3 cameraUp{ 0, 1, 0 };
 		glm::vec3 lookAt{ 0.0f, -2.0f, 0.0f };
 	} camera;
