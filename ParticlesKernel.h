@@ -12,6 +12,8 @@ class ParticlesKernel {
 		int THREADS_PER_BLOCK = 0;
 		int BLOCKS_COUNT = 0;
 		float POLY6_COEFFICIENT = 0;
+		float SPIKY_COEFFICIENT = 0;
+		float VISCOSITY_COEFFICIENT = 0;
 		
 		cudaExternalMemory_t externalMemory{};
 		void* cudaBuffer = nullptr;

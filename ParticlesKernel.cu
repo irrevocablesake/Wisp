@@ -3,22 +3,6 @@
 #include<math_constants.h>
 #include<cccl/cub/cub.cuh>
 
-__device__ float poly6Kernel(float distanceSquared, float smoothingRadius)
-{
-    float h2 = smoothingRadius * smoothingRadius;
-
-    if (distanceSquared >= h2)
-        return 0.0f;
-
-    float h9 = powf(smoothingRadius, 9.0f);
-
-    float coefficient = 315.0f / (64.0f * CUDART_PI_F * h9);
-
-    float difference = h2 - distanceSquared;
-
-    return coefficient * difference * difference * difference;
-}
-
 __device__ float calculateBoundaryDensityContribution(
     float3 position,
     const ParticlesKernel::BoundaryParticle* boundaryParticles,
@@ -29,15 +13,12 @@ __device__ float calculateBoundaryDensityContribution(
     float smoothingRadius,
     float3 gridOrigin,
     uint3 gridDimensions,
-    float cellSize)
+    float cellSize,
+    float poly6Coefficient)
 {
     float density = 0.0f;
 
-    const float h2 = smoothingRadius * smoothingRadius;
-    const float h9 = powf(smoothingRadius, 9.0f);
-
-    const float poly6Coefficient =
-        315.0f / (64.0f * CUDART_PI_F * h9);
+    const float smoothingRadiusSquared = smoothingRadius * smoothingRadius;
 
     int3 cell = make_int3(
         static_cast<int>(floorf((position.x - gridOrigin.x) / cellSize)),
@@ -105,10 +86,10 @@ __device__ float calculateBoundaryDensityContribution(
                     const float distanceSquared =
                         dx * dx + dy * dy + dz * dz;
 
-                    if (distanceSquared >= h2)
+                    if (distanceSquared >= smoothingRadiusSquared)
                         continue;
 
-                    const float differenceH = h2 - distanceSquared;
+                    const float differenceH = smoothingRadiusSquared -distanceSquared;
 
                     const float weight =
                         poly6Coefficient *
@@ -121,39 +102,6 @@ __device__ float calculateBoundaryDensityContribution(
     }
 
     return density;
-}
-
-__device__ float3 spikyGradient(float3 displacement, float distance, float smoothingRadius)
-{
-    if (distance <= 0.0f || distance > smoothingRadius)
-        return make_float3(0.0f, 0.0f, 0.0f);
-
-    float h2 = smoothingRadius * smoothingRadius;
-    float h3 = h2 * smoothingRadius;
-    float h6 = h3 * h3;
-
-    float coefficient = -45.0f / (CUDART_PI_F * h6);
-    float difference = smoothingRadius - distance;
-    float magnitude = coefficient * difference * difference;
-
-    return make_float3(
-        magnitude * displacement.x / distance,
-        magnitude * displacement.y / distance,
-        magnitude * displacement.z / distance
-    );
-}
-
-__device__ float viscosityKernel(float distance, float smoothingRadius) {
-    if (distance < 0.0f || distance > smoothingRadius)
-        return 0.0f;
-
-    float h2 = smoothingRadius * smoothingRadius;
-    float h3 = h2 * smoothingRadius;
-    float h6 = h3 * h3;
-
-    float coefficient = 45.0f / (CUDART_PI_F * h6);
-
-    return coefficient * (smoothingRadius - distance);
 }
 
 __global__ void initializeIndicesKernel( uint32_t* particleIndices, unsigned int count ){
@@ -323,12 +271,13 @@ __global__ void calculateDensityAndPressureKernel(
     );
 
 
-    //NEDD TO FIX THIS -1 TO 1 RANGE
-    for (int z = -1; z <= 1; ++z)
+    int searchRadius = static_cast<int>(ceilf(smoothingRadius / cellSize));
+
+    for (int z = -searchRadius; z <= searchRadius; ++z)
     {
-        for (int y = -1; y <= 1; ++y)
+        for (int y = -searchRadius; y <= searchRadius; ++y)
         {
-            for (int x = -1; x <= 1; ++x)
+            for (int x = -searchRadius; x <= searchRadius; ++x)
             {
                 int3 neighborCell = make_int3(
                     cell.x + x,
@@ -393,7 +342,8 @@ __global__ void calculateDensityAndPressureKernel(
             smoothingRadius,
             boundaryGridOrigin,
             boundaryGridDimensions,
-            cellSize
+            cellSize,
+            poly6Coefficient
         );
     }
 
@@ -408,6 +358,8 @@ __global__ void calculatePressureAndViscosityForcesKernel(
     float particleMass,
     float smoothingRadius,
     float viscosityCoefficient,
+    float viscosityKernelCoefficient,
+    float spikyCoefficient,
 
     float3 gridOrigin,
     float cellSize,
@@ -448,13 +400,6 @@ __global__ void calculatePressureAndViscosityForcesKernel(
     );
 
     int searchRadius = static_cast<int>( ceilf(smoothingRadius / cellSize) );
-
-    float h2 = smoothingRadius * smoothingRadius;
-    float h3 = h2 * smoothingRadius;
-    float h6 = h3 * h3;
-
-    float spikyCoefficient = -45.0f / (CUDART_PI_F * h6);
-    float viscosityKernelCoefficient = 45.0f / (CUDART_PI_F * h6);
 
     for (int z = -searchRadius; z <= searchRadius; ++z)
     {
@@ -775,6 +720,8 @@ void ParticlesKernel::calculatePressureAndViscosityForces()
             simulationParams -> mass,
             simulationParams -> smoothingRadius,
             simulationParams -> viscosityCoefficient,
+            VISCOSITY_COEFFICIENT,
+            SPIKY_COEFFICIENT,
 
             simulationParams -> bounds.min,
             simulationParams -> cellSize,
@@ -783,8 +730,7 @@ void ParticlesKernel::calculatePressureAndViscosityForces()
             sortedParticleIndices,
             cellStart,
             cellEnd
-            );
-
+        );
 }
 
 void ParticlesKernel::initialize(CudaContext& _cudaContext, GPUSimulationParams &_simulationParams ) {
@@ -833,9 +779,16 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext, GPUSimulationParams 
 
     initializeBoundaryGrid();
 
-    float smoothingRadiusSquared = simulationParams->smoothingRadius * simulationParams->smoothingRadius;
-    float smoothingRadius9 = powf(simulationParams->smoothingRadius, 9.0f);
-    POLY6_COEFFICIENT = 315.0f / (64.0f * CUDART_PI_F * smoothingRadius9);
+    float h = simulationParams->smoothingRadius;
+    float h2 = h * h;
+    float h3 = h2 * h;
+    float h6 = h3 * h3;
+    float h9 = h6 * h3;
+
+    POLY6_COEFFICIENT = 315.0f / (64.0f * CUDART_PI_F * h9 );
+
+    SPIKY_COEFFICIENT = -45.0f / (CUDART_PI_F * h6 );
+    VISCOSITY_COEFFICIENT = 45.0f / (CUDART_PI_F * h6 );
 }
 
 void ParticlesKernel::updateParticles( float deltaTime) {

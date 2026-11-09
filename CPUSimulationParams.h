@@ -19,7 +19,7 @@ struct CPUSimulationParams {
 	float viscosityCoefficient = 0.1f;
 	float restDensity = 1000.0f;
 
-	int particlesCount = 1000;
+	int particlesCount = 100000;
 
 	float gasConstant = 0.006f;
 
