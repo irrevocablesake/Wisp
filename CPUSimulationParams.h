@@ -2,6 +2,7 @@
 
 #include<glm/glm.hpp>
 
+//Note: Ensure cellsize >= Smoothing Radius
 struct CPUSimulationParams {
 
 	float latticeSpacing = 0.04f;
@@ -23,7 +24,7 @@ struct CPUSimulationParams {
 
 	float gasConstant = 0.006f;
 
-	float cellSize = 0.04f;
+	float cellSize = 0.08f;
 
 	uint32_t boundaryParticlesCount = 0;
 	float boundaryParticleMass  = restDensity * boundarySpacing * boundarySpacing * boundarySpacing;

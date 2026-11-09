@@ -3,6 +3,8 @@
 #include<math_constants.h>
 #include<cccl/cub/cub.cuh>
 
+#define MAX_SEARCH_RADIUS 1
+
 __device__ float calculateBoundaryDensityContribution(
     float3 position,
     const ParticlesKernel::BoundaryParticle* boundaryParticles,
@@ -14,8 +16,8 @@ __device__ float calculateBoundaryDensityContribution(
     float3 gridOrigin,
     uint3 gridDimensions,
     float cellSize,
-    float poly6Coefficient,
-    float searchRadius)
+    float poly6Coefficient
+    )
 {
     float density = 0.0f;
 
@@ -31,11 +33,14 @@ __device__ float calculateBoundaryDensityContribution(
     cell.y = max(0, min(cell.y, static_cast<int>(gridDimensions.y) - 1));
     cell.z = max(0, min(cell.z, static_cast<int>(gridDimensions.z) - 1));
 
-    for (int z = -searchRadius; z <= searchRadius; ++z)
+    #pragma unroll
+    for (int z = -MAX_SEARCH_RADIUS; z <= MAX_SEARCH_RADIUS; ++z)
     {
-        for (int y = -searchRadius; y <= searchRadius; ++y)
+        #pragma unroll
+        for (int y = -MAX_SEARCH_RADIUS; y <= MAX_SEARCH_RADIUS; ++y)
         {
-            for (int x = -searchRadius; x <= searchRadius; ++x)
+            #pragma unroll
+            for (int x = -MAX_SEARCH_RADIUS; x <= MAX_SEARCH_RADIUS; ++x)
             {
                 int3 neighbourCell = make_int3(
                     cell.x + x,
@@ -245,8 +250,8 @@ __global__ void calculateDensityAndPressureKernel(
 
     float3 boundaryGridOrigin,
     uint3 boundaryGridDimensions,
-    float poly6Coefficient,
-    float searchRadius)
+    float poly6Coefficient
+    )
 {
     uint32_t particleID = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -269,11 +274,14 @@ __global__ void calculateDensityAndPressureKernel(
         static_cast<int>(floorf((position.z - gridOrigin.z) / cellSize))
     );
 
-    for (int z = -searchRadius; z <= searchRadius; ++z)
+    #pragma unroll
+    for (int z = -MAX_SEARCH_RADIUS; z <= MAX_SEARCH_RADIUS; ++z)
     {
-        for (int y = -searchRadius; y <= searchRadius; ++y)
+        #pragma unroll
+        for (int y = -MAX_SEARCH_RADIUS; y <= MAX_SEARCH_RADIUS; ++y)
         {
-            for (int x = -searchRadius; x <= searchRadius; ++x)
+            #pragma unroll
+            for (int x = -MAX_SEARCH_RADIUS; x <= MAX_SEARCH_RADIUS; ++x)
             {
                 int3 neighborCell = make_int3(
                     cell.x + x,
@@ -339,8 +347,7 @@ __global__ void calculateDensityAndPressureKernel(
             boundaryGridOrigin,
             boundaryGridDimensions,
             cellSize,
-            poly6Coefficient,
-            searchRadius
+            poly6Coefficient
         );
     }
 
@@ -364,8 +371,8 @@ __global__ void calculatePressureAndViscosityForcesKernel(
 
     const uint32_t* sortedParticleIndices,
     const uint32_t* cellStart,
-    const uint32_t* cellEnd,
-    float searchRadius)
+    const uint32_t* cellEnd
+    )
 {
     uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -397,11 +404,14 @@ __global__ void calculatePressureAndViscosityForcesKernel(
         static_cast<int>(floorf((position.z - gridOrigin.z) / cellSize))
     );
 
-    for (int z = -searchRadius; z <= searchRadius; ++z)
+    #pragma unroll
+    for (int z = -MAX_SEARCH_RADIUS; z <= MAX_SEARCH_RADIUS; ++z)
     {
-        for (int y = -searchRadius; y <= searchRadius; ++y)
+        #pragma unroll
+        for (int y = -MAX_SEARCH_RADIUS; y <= MAX_SEARCH_RADIUS; ++y)
         {
-            for (int x = -searchRadius; x <= searchRadius; ++x)
+            #pragma unroll
+            for (int x = -MAX_SEARCH_RADIUS; x <= MAX_SEARCH_RADIUS; ++x)
             {
                 int3 neighbourCell = make_int3(
                     cell.x + x,
@@ -698,8 +708,7 @@ void ParticlesKernel::calculateDensityAndPressure() {
             simulationParams->boundaryGridOrigin,
             simulationParams->boundaryGridDimensions,
 
-            POLY6_COEFFICIENT,
-            SEARCH_RADIUS
+            POLY6_COEFFICIENT
       );
 }
 
@@ -726,8 +735,7 @@ void ParticlesKernel::calculatePressureAndViscosityForces()
 
             sortedParticleIndices,
             cellStart,
-            cellEnd,
-            SEARCH_RADIUS
+            cellEnd
         );
 }
 
@@ -738,7 +746,6 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext, GPUSimulationParams 
     THREADS_PER_BLOCK = 512;
     BLOCKS_COUNT = (simulationParams->particlesCount + THREADS_PER_BLOCK - 1 ) / THREADS_PER_BLOCK;
     BOUNDARY_BLOCKS_COUNT = (simulationParams->boundaryParticlesCount + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-    SEARCH_RADIUS = static_cast<int>(ceilf(simulationParams->smoothingRadius / simulationParams->cellSize));
 
     const unsigned int count = static_cast<unsigned int>(simulationParams -> particlesCount);
     const size_t bytes = count * sizeof(uint32_t);

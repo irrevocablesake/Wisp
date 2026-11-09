@@ -15,7 +15,6 @@ class ParticlesKernel {
 		float POLY6_COEFFICIENT = 0;
 		float SPIKY_COEFFICIENT = 0;
 		float VISCOSITY_COEFFICIENT = 0;
-		int SEARCH_RADIUS = 0;
 		
 		cudaExternalMemory_t externalMemory{};
 		void* cudaBuffer = nullptr;
