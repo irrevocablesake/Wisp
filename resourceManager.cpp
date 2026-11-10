@@ -7,12 +7,21 @@ void ResourceManager::copyDataIntoBuffer(void* destination, const void* source, 
 	memcpy(destination, source, size);
 }
 
-void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags, bool interop ) {
-	
-	VkBufferCreateInfo uniformBufferCreateInfo;
+void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags, bool interop) {
+
+	VkBufferCreateInfo uniformBufferCreateInfo{};
+	VkExternalMemoryBufferCreateInfo externalBufferInfo{};
+	VkExportMemoryAllocateInfo exportInfo{};
+
 	if (interop) {
-		VkExternalMemoryBufferCreateInfo externalBufferInfo{
+		exportInfo = {
+			.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
+			.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
+		};
+
+		externalBufferInfo = {
 			.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
+			.pNext = &exportInfo,
 			.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
 		};
 
@@ -31,19 +40,23 @@ void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags
 		};
 	}
 
+	VmaAllocationCreateFlags allocFlags =
+		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+		VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
+		VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+	if (interop) {
+		allocFlags |= VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+	}
+
 	VmaAllocationCreateInfo uniformBufferAllocationCreateInfo{
-		.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+		.flags = allocFlags,
 		.usage = VMA_MEMORY_USAGE_AUTO
 	};
 
 	if (interop) {
-		VkExportMemoryAllocateInfo exportInfo{
-		   .sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
-		   .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
-		};
-
 		vmaCreateDedicatedBuffer(
-			vulkanContext ->allocatorIF.handle,
+			vulkanContext->allocatorIF.handle,
 			&uniformBufferCreateInfo,
 			&uniformBufferAllocationCreateInfo,
 			&exportInfo,
@@ -53,8 +66,14 @@ void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags
 		);
 	}
 	else {
-		//validation later
-		vmaCreateBuffer(vulkanContext->allocatorIF.handle, &uniformBufferCreateInfo, &uniformBufferAllocationCreateInfo, &handle.buffer, &handle.allocation, &handle.allocationInfo);
+		vmaCreateBuffer(
+			vulkanContext->allocatorIF.handle,
+			&uniformBufferCreateInfo,
+			&uniformBufferAllocationCreateInfo,
+			&handle.buffer,
+			&handle.allocation,
+			&handle.allocationInfo
+		);
 	}
 
 	VkBufferDeviceAddressInfo uniformBDAInfo{
