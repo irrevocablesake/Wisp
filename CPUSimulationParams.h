@@ -20,8 +20,12 @@ struct CPUSimulationParams {
 	float viscosityCoefficient = 0.1f;
 	float restDensity = 1000.0f;
 
-	int particlesCount = 40960;
+	//int particlesCount = 40960;
 	//int particlesCount = 131072;
+	int particlesCount = 102400;
+	//int particlesCount = 204800;
+	//int particlesCount = 409600;
+	//int particlesCount = 1024000;
 
 	float gasConstant = 0.006f;
 
@@ -31,8 +35,8 @@ struct CPUSimulationParams {
 	float boundaryParticleMass  = restDensity * boundarySpacing * boundarySpacing * boundarySpacing;
 
 	struct SimulationBounds {
-		glm::vec3 min = glm::vec3(-2.0f);
-		glm::vec3 max = glm::vec3(2.0f);
+		glm::vec3 min = glm::vec3(-4.0f);
+		glm::vec3 max = glm::vec3(4.0f);
 		glm::vec3 dimensions = max - min;
 	} bounds;
 

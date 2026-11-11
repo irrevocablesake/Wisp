@@ -49,7 +49,11 @@ class ParticlesKernel {
 			float4 position{};
 		};
 
+		CudaParticle* sortedParticles = nullptr;
+
 		const GPUSimulationParams *simulationParams = nullptr;
+
+		void launchReorder();
 
 		uint32_t* boundaryParticleCellIds = nullptr;
 		uint32_t* sortedBoundaryCellIds = nullptr;
