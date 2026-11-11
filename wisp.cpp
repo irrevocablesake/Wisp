@@ -1,4 +1,4 @@
-#include "CudaInterface.cuh"
+#include "CudaInterface.h"
 #include "Particles.h"
 #include "engine.h"
 

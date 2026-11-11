@@ -1,4 +1,4 @@
-#include "ParticlesKernel.cuh"
+#include "ParticlesKernel.h"
 
 #include<math_constants.h>
 #include<cccl/cub/cub.cuh>

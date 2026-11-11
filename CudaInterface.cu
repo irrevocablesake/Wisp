@@ -1,4 +1,4 @@
-#include "CudaInterface.cuh"
+#include "CudaInterface.h"
 
 void CudaInterface::initialize(const std::array< uint8_t, 16 >& deviceUUID, const CPUSimulationParams &_simulationParams  ) {
 	cudaContext.initialize(deviceUUID);
