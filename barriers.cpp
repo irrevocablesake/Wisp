@@ -227,3 +227,32 @@ void Barriers::endOneTimeCommand( VkDevice device, VkCommandBuffer &commandBuffe
 	vkQueueSubmit( queue, 1, &oneTimeSubmitInfo, fenceOneTime);
 	vkWaitForFences( device, 1, &fenceOneTime, VK_TRUE, UINT64_MAX);
 }
+
+void Barriers::transitionImageFromUndefinedToReadOnly(
+	VkCommandBuffer& commandBuffer,
+	VkImage& image
+) {
+	VkImageMemoryBarrier2 barrier{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+		.srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+		.srcAccessMask = VK_ACCESS_2_NONE,
+		.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+		.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+		.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+		.image = image,
+		.subresourceRange = {
+			.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+			.levelCount = 1,
+			.layerCount = 1
+		}
+	};
+
+	VkDependencyInfo dependency{
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &barrier
+	};
+
+	vkCmdPipelineBarrier2(commandBuffer, &dependency);
+}

@@ -91,7 +91,10 @@ HANDLE ResourceManager::exportBuffer(BufferHandle& handle) {
 	return sharedHandle;
 }
 
-void ResourceManager::generateTexture( TextureHandle& handle) {
+//WE REALLY NEED TO WRITE A SCENE GRAPH / TRANSITION BARRIERS AUTOMATIC
+void ResourceManager::generateTexture(TextureHandle& handle, VkImageUsageFlags usage, VkImageAspectFlags aspectMask) {
+
+	//Example usage: VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT
 	VkImageCreateInfo textureImageCreateInfo{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 		.imageType = VK_IMAGE_TYPE_2D,
@@ -105,7 +108,7 @@ void ResourceManager::generateTexture( TextureHandle& handle) {
 		.arrayLayers = 1,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.tiling = VK_IMAGE_TILING_OPTIMAL,
-		.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
+		.usage = usage,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
 	};
 
@@ -116,17 +119,24 @@ void ResourceManager::generateTexture( TextureHandle& handle) {
 	//add validation later
 	vmaCreateImage(vulkanContext->allocatorIF.handle, &textureImageCreateInfo, &textureImageAllocationCreateInfo, &handle.image, &handle.allocation, nullptr);
 
-	VkCommandBuffer commandBuffer = barrier.beginOneTimeCommand( vulkanContext->logicalDeviceIF.handle,vulkanContext->commandPool);
-	barrier.transitionImageFromUndefinedToGeneral(commandBuffer, handle.image);
+	VkCommandBuffer commandBuffer = barrier.beginOneTimeCommand(vulkanContext->logicalDeviceIF.handle, vulkanContext->commandPool);
+	//depends upon the image type
+	if (aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) {
+		barrier.transitionImageFromUndefinedToReadOnly(commandBuffer, handle.image);
+	}
+	else {
+		barrier.transitionImageFromUndefinedToGeneral(commandBuffer, handle.image);
+	}
 	barrier.endOneTimeCommand(vulkanContext->logicalDeviceIF.handle, commandBuffer, vulkanContext->queueIF.handle);
 
+	//aspect mask can't just be color bit : VK_IMAGE_ASPECT_COLOR_BIT
 	VkImageViewCreateInfo textureImageViewCreateInfo{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 		.image = handle.image,
 		.viewType = VK_IMAGE_VIEW_TYPE_2D,
 		.format = handle.imageFormat,
 		.subresourceRange = {
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.aspectMask = aspectMask,
 			.levelCount = 1,
 			.layerCount = 1
 		}
@@ -134,10 +144,24 @@ void ResourceManager::generateTexture( TextureHandle& handle) {
 
 	vkCreateImageView(vulkanContext->logicalDeviceIF.handle, &textureImageViewCreateInfo, nullptr, &handle.imageView);
 
+	VkSamplerCreateInfo samplerCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+		.magFilter = handle.imageFilter,
+		.minFilter = handle.imageFilter,
+		.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+		.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		.minLod = 0.0f,
+		.maxLod = 0.0f
+	};
+
+	vkCreateSampler(vulkanContext->logicalDeviceIF.handle, &samplerCreateInfo, nullptr, &handle.sampler);
+
 	handle.descriptor = {
-		.sampler = VK_NULL_HANDLE,
+		.sampler = handle.sampler,
 		.imageView = handle.imageView,
-		.imageLayout = VK_IMAGE_LAYOUT_GENERAL
+		.imageLayout = handle.imageLayout
 	};
 }
 

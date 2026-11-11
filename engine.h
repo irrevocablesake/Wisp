@@ -33,7 +33,7 @@ public:
 	VulkanContext::Frame& getCurrentFrame();
 	ResourceManager::TextureHandle& generateTextureHandle();
 	VkShaderModule compileShader(std::string moduleName, std::string path);
-	void generateTexture(ResourceManager::TextureHandle& handle);
+	void generateTexture(ResourceManager::TextureHandle& handle, VkImageUsageFlags usage, VkImageAspectFlags aspectMask);
 
 	float generateRandomNumber( float min, float max );
 

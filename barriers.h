@@ -12,6 +12,11 @@ class Barriers {
 		void transitionImageFromUndefinedToColorAttachment(VkCommandBuffer& commandBuffer, VkImage& image);
 		void transitionImageFromColorAttachmentToPresent(VkCommandBuffer& commandBuffer, VkImage& image);
 
+		void transitionImageFromUndefinedToReadOnly(
+			VkCommandBuffer& commandBuffer,
+			VkImage& image
+		);
+
 		VkCommandBuffer beginOneTimeCommand( VkDevice& device, VkCommandPool& commandPool );
 		void endOneTimeCommand(VkDevice device, VkCommandBuffer& commandBuffer, VkQueue queue );
 

@@ -51,8 +51,8 @@ VkShaderModule Engine::compileShader(std::string moduleName, std::string path) {
 	return shadersIF.loadAndCompileShaders(vulkanContext.logicalDeviceIF.handle, moduleName.c_str(), path.c_str() );
 }
 
-void Engine::generateTexture(ResourceManager::TextureHandle& handle) {
-	resourceManager.generateTexture(handle);
+void Engine::generateTexture(ResourceManager::TextureHandle& handle, VkImageUsageFlags usage, VkImageAspectFlags aspectMask) {
+	resourceManager.generateTexture(handle, usage, aspectMask);
 }
 
 Engine::RenderingAttachment Engine::setRenderingAttachment(VkImageView& imageView) {

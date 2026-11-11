@@ -40,6 +40,7 @@ class ResourceManager {
 
 			VkFormat imageFormat;
 			VkFilter imageFilter;
+			VkImageLayout imageLayout; // What layout the shader should expect the texture to be in
 
 			uint32_t width;
 			uint32_t height;
@@ -51,7 +52,7 @@ class ResourceManager {
 		void setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags, bool interop = false );
 		void copyDataIntoBuffer( void* destination, const void* source, size_t size );
 
-		void generateTexture(TextureHandle& handle );
+		void generateTexture( TextureHandle& handle, VkImageUsageFlags usage, VkImageAspectFlags aspectMask );
 
 		void setup( VulkanContext& vulkanContext_ );
 
