@@ -1,7 +1,7 @@
 #pragma once
 
-#include "CudaContext.h"
-#include "ParticlesKernel.h"
+#include "CudaContext.cuh"
+#include "ParticlesKernel.cuh"
 #include "GPUSimulationParams.h"
 #include "CPUSimulationParams.h"
 
