@@ -39,6 +39,13 @@ class Wisp {
 	VkPipeline GraphicsPipeline;
 	VkPipelineLayout GraphicsPipelineLayout;
 
+	//Depth Pipeline
+	VkPipeline DepthPipeline;
+	VkPipelineLayout DepthPipelineLayout;
+
+	VkPipeline FinalPipeline;
+	VkPipelineLayout FinalPipelineLayout;
+
 	//Particles
 	Particles particles;
 
@@ -190,6 +197,83 @@ class Wisp {
 		engine.pipelineManager.createGraphicsPipeline(GraphicsPipeline, GraphicsPipelineLayout, layouts, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, vertexInputInfo, 0, false, true );
 	}
 
+	//NOTE: NEED TO WORK ON THE SHADER MODULE NAMES + FILE NAMES
+	void generateDepthPipeline() {
+		//DEPTH PIPELINE
+		VkPipelineShaderStageCreateInfo vertexShaderStage{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.stage = VK_SHADER_STAGE_VERTEX_BIT,
+			.module = engine.compileShader("vertexModuleNew", "assets/shaders/depthVertexShader.slang"),
+			.pName = "main"
+		};
+
+		std::vector< VkPipelineShaderStageCreateInfo > shaderStages = { vertexShaderStage };
+
+		std::vector< VkDescriptorSetLayout > layouts = { particles.PBDescriptorSetLayout, UBDescriptorSetLayout };
+
+		VkVertexInputBindingDescription binding{
+			.binding = 0,
+			.stride = sizeof(Engine::Vertex),
+			.inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+		};
+
+		std::vector<VkVertexInputAttributeDescription> attributes = {
+			{
+				.location = 0,
+				.binding = 0,
+				.format = VK_FORMAT_R32G32B32_SFLOAT,
+				.offset = offsetof(Engine::Vertex, position)
+			},
+			{
+				.location = 1,
+				.binding = 0,
+				.format = VK_FORMAT_R32G32B32_SFLOAT,
+				.offset = offsetof(Engine::Vertex, normal)
+			}
+		};
+
+		VkPipelineVertexInputStateCreateInfo vertexInputInfo{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+			.vertexBindingDescriptionCount = 1,
+			.pVertexBindingDescriptions = &binding,
+			.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size()),
+			.pVertexAttributeDescriptions = attributes.data()
+		};
+
+		engine.pipelineManager.createGraphicsPipeline(DepthPipeline, DepthPipelineLayout, layouts, VK_FORMAT_UNDEFINED, shaderStages, vertexInputInfo, 0, true, true);
+	}
+
+	void generateFinalPipeline() {
+		//FINAL PIPELINE
+		VkPipelineShaderStageCreateInfo vertexShaderStage{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.stage = VK_SHADER_STAGE_VERTEX_BIT,
+			.module = engine.compileShader("vertexModuleNEWNEW", "assets/shaders/finalVertexShader.slang"),
+			.pName = "main"
+		};
+
+		VkPipelineShaderStageCreateInfo fragmentShaderStage{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+			.module = engine.compileShader("fragmentModuleNEWNEW", "assets/shaders/finalFragmentShader.slang"),
+			.pName = "main"
+		};
+
+		std::vector< VkPipelineShaderStageCreateInfo > shaderStages = { vertexShaderStage, fragmentShaderStage };
+
+		std::vector< VkDescriptorSetLayout > layouts = { FDTextureDescriptorSetLayout };
+
+		VkPipelineVertexInputStateCreateInfo vertexInputInfo{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+			.vertexBindingDescriptionCount = 0,
+			.pVertexBindingDescriptions = nullptr,
+			.vertexAttributeDescriptionCount = 0,
+			.pVertexAttributeDescriptions = nullptr
+		};
+
+		engine.pipelineManager.createGraphicsPipeline(FinalPipeline, FinalPipelineLayout, layouts, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, vertexInputInfo, 0, false, false);
+	}
+
 	void generateParticles() {
 		particles.generate( engine, simulationParams );
 
@@ -231,6 +315,8 @@ class Wisp {
 		setupFluidDepthTexture();
 
 		generatePipeline();
+		generateDepthPipeline();
+		generateFinalPipeline();
 
 		vkToCuda = engine.vulkanContext.createExportableSemaphore();
 		cudaToVk = engine.vulkanContext.createExportableSemaphore();
