@@ -140,7 +140,7 @@ class Wisp {
 			.pVertexAttributeDescriptions = attributes.data()
 		};
 
-		engine.pipelineManager.createGraphicsPipeline(GraphicsPipeline, GraphicsPipelineLayout, layouts, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, vertexInputInfo, 0);
+		engine.pipelineManager.createGraphicsPipeline(GraphicsPipeline, GraphicsPipelineLayout, layouts, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, vertexInputInfo, 0, false, true );
 	}
 
 	void generateParticles() {

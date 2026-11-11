@@ -14,7 +14,7 @@ void PipelineManager::createComputePipeline(VkPipeline& pipeline, VkPipelineShad
 	vkCreateComputePipelines(vulkanContext->logicalDeviceIF.handle, nullptr, 1, &pipelineCI, nullptr, &pipeline);
 }
 
-void PipelineManager::createGraphicsPipeline(VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, const std::vector<VkDescriptorSetLayout>& layout, VkFormat format, std::vector< VkPipelineShaderStageCreateInfo >& shaderStages, VkPipelineVertexInputStateCreateInfo& vertexInputState, uint32_t pushConstantSize ) {
+void PipelineManager::createGraphicsPipeline(VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, const std::vector<VkDescriptorSetLayout>& layout, VkFormat format, std::vector< VkPipelineShaderStageCreateInfo >& shaderStages, VkPipelineVertexInputStateCreateInfo& vertexInputState, uint32_t pushConstantSize, bool isDepth, bool depthTestEnable ) {
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
 	if (pushConstantSize == 0) {
 		pipelineLayoutCreateInfo = {
@@ -62,28 +62,29 @@ void PipelineManager::createGraphicsPipeline(VkPipeline& pipeline, VkPipelineLay
 		.scissorCount = 1
 	};
 
+	//REALLY STUPID BUT OKAY: DON'T DO UNDEFINED AND FALSE
 	VkPipelineDepthStencilStateCreateInfo depthStencilState{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-		.depthTestEnable = VK_TRUE,
-		.depthWriteEnable = VK_TRUE,
+		.depthTestEnable = depthTestEnable,
+		.depthWriteEnable = depthTestEnable,
 		.depthCompareOp = VK_COMPARE_OP_LESS
 	};
 
 	VkPipelineRenderingCreateInfo renderingCreateInfo{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-		.colorAttachmentCount = 1,
-		.pColorAttachmentFormats = &format,
+		.colorAttachmentCount = isDepth ? 0u : 1u,
+		.pColorAttachmentFormats = isDepth ? nullptr : &format,
+		.depthAttachmentFormat = depthTestEnable ? VK_FORMAT_D32_SFLOAT : VK_FORMAT_UNDEFINED
 	};
 
 	VkPipelineColorBlendAttachmentState blendAttachment{
 		.colorWriteMask = 0xF
 	};
 
-
 	VkPipelineColorBlendStateCreateInfo colorBlendState{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-		.attachmentCount = 1,
-		.pAttachments = &blendAttachment
+		.attachmentCount = isDepth ? 0u : 1u,
+		.pAttachments = isDepth ? nullptr : &blendAttachment
 	};
 
 	VkPipelineRasterizationStateCreateInfo rasterizationState{
