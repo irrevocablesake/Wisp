@@ -30,6 +30,11 @@ class Wisp {
 	VkDescriptorSet UBDescriptorSet;
 	VkDescriptorSetLayout UBDescriptorSetLayout;
 
+	//Fluid Depth Texture
+	Engine::TextureHandle FDTextureHandle;
+	VkDescriptorSet FDTextureDescriptorSet;
+	VkDescriptorSetLayout FDTextureDescriptorSetLayout;
+
 	//Graphics Pipeline
 	VkPipeline GraphicsPipeline;
 	VkPipelineLayout GraphicsPipelineLayout;
@@ -44,6 +49,12 @@ class Wisp {
 		glm::mat4 view = glm::mat4(1.0f);
 		glm::mat4 projection = glm::mat4(1.0f);
 	} uniformData;
+
+	//struct Camera {
+	//	glm::vec3 position{ 6.0f, 6.0f, 6.0f };
+	//	glm::vec3 cameraUp{ 0, 1, 0 };
+	//	glm::vec3 lookAt{ 0.0f, -0.0f, 0.0f };
+	//} camera;
 
 	struct Camera {
 		glm::vec3 position{ 6.0f, 6.0f, 6.0f };
@@ -89,6 +100,42 @@ class Wisp {
 
 		engine.resourceManager.updateDescriptorSet(bufferUpdate);
 		engine.resourceManager.copyDataIntoBuffer(UBHandle.allocationInfo.pMappedData, &uniformData, UBHandle.size);
+	}
+
+	void setupFluidDepthTexture() {
+		FDTextureHandle = engine.generateTextureHandle();
+		FDTextureHandle.imageFormat = VK_FORMAT_D32_SFLOAT;
+		FDTextureHandle.imageFilter = VK_FILTER_NEAREST;
+		FDTextureHandle.width = engine.windowManager.windowSize.x;
+		FDTextureHandle.height = engine.windowManager.windowSize.y;
+		FDTextureHandle.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		engine.generateTexture(FDTextureHandle, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+		VkDescriptorSetLayoutBinding binding{
+			.binding = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+		};
+
+		FDTextureDescriptorSetLayout = engine.resourceManager.createDescriptorSetLayout({
+			binding
+		});
+
+		FDTextureDescriptorSet = engine.resourceManager.allocateDescriptorSets({
+			FDTextureDescriptorSetLayout
+		});
+
+		std::vector< VkWriteDescriptorSet > imageSet = { {
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = FDTextureDescriptorSet,
+			.dstBinding = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.pImageInfo = &FDTextureHandle.descriptor
+		} };
+
+		engine.resourceManager.updateDescriptorSet(imageSet);
 	}
 
 	void generatePipeline() {
@@ -174,12 +221,14 @@ class Wisp {
 
 		engine.resourceManager.setupDescriptorPool({
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 }
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 }
 		});
 
 		generateParticles();
 
 		setupUB();
+		setupFluidDepthTexture();
 
 		generatePipeline();
 
