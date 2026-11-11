@@ -256,3 +256,67 @@ void Barriers::transitionImageFromUndefinedToReadOnly(
 
 	vkCmdPipelineBarrier2(commandBuffer, &dependency);
 }
+
+void Barriers::transitionDepthReadOnlyToAttachment(
+	VkCommandBuffer& commandBuffer,
+	VkImage& image
+) {
+	VkImageMemoryBarrier2 barrier{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+		.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+		.srcAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+		.dstStageMask =
+			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+			VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+		.dstAccessMask =
+			VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+			VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+		.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+		.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		.image = image,
+		.subresourceRange = {
+			.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+			.levelCount = 1,
+			.layerCount = 1
+		}
+	};
+
+	VkDependencyInfo dependency{
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &barrier
+	};
+
+	vkCmdPipelineBarrier2(commandBuffer, &dependency);
+}
+
+void Barriers::transitionDepthAttachmentToReadOnly(
+	VkCommandBuffer& commandBuffer,
+	VkImage& image
+) {
+	VkImageMemoryBarrier2 barrier{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+		.srcStageMask =
+			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+			VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+		.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+		.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+		.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+		.image = image,
+		.subresourceRange = {
+			.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+			.levelCount = 1,
+			.layerCount = 1
+		}
+	};
+
+	VkDependencyInfo dependency{
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &barrier
+	};
+
+	vkCmdPipelineBarrier2(commandBuffer, &dependency);
+}

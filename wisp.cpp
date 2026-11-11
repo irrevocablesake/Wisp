@@ -394,20 +394,59 @@ class Wisp {
 
 			engine.resourceManager.copyDataIntoBuffer(UBHandle.allocationInfo.pMappedData, &uniformData, UBHandle.size);
 
-			VkDeviceSize offset = 0;
+			engine.barrier.transitionDepthReadOnlyToAttachment(commandBuffer, FDTextureHandle.image);
 
-			engine.barrier.transitionImageFromUndefinedToColorAttachment(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
-			Engine::RenderingAttachment renderingAttachment = engine.setRenderingAttachment(engine.swapchainManager.imageViews[engine.swapchainManager.imageIndex] );
-			vkCmdBeginRendering(commandBuffer, &renderingAttachment.renderingInfo );
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &particles.particleGeometry.VHandle.buffer, &offset);
+			//NEED TO WORK ON THIS - SOMETHING SIMILAR TO ABSTRACTCION RENDERINGATTACHMENT
+			VkRenderingAttachmentInfo depthAttachmentInfo{
+				.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+				.imageView = FDTextureHandle.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+				.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+				.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+				.clearValue = {.depthStencil = {1.0f,  0}}
+			};
+
+			VkRenderingInfo renderingInfo{
+				.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+				.renderArea{.extent{.width = static_cast<uint32_t>(engine.windowManager.windowSize.x), .height = static_cast<uint32_t>(engine.windowManager.windowSize.y) }},
+				.layerCount = 1,
+				.pDepthAttachment = &depthAttachmentInfo
+			};
+
+			VkDeviceSize offset1 = 0;
+			vkCmdBeginRendering(commandBuffer, &renderingInfo);
+			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, DepthPipeline);
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &particles.particleGeometry.VHandle.buffer, &offset1);
 			vkCmdBindIndexBuffer(commandBuffer, particles.particleGeometry.IHandle.buffer, 0, VK_INDEX_TYPE_UINT32);
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipelineLayout, 0, 1, &particles.PBDescriptorSet, 0, nullptr);
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipelineLayout, 1, 1, &UBDescriptorSet, 0, nullptr);
-			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, DepthPipelineLayout, 0, 1, &particles.PBDescriptorSet, 0, nullptr);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, DepthPipelineLayout, 1, 1, &UBDescriptorSet, 0, nullptr);
 			vkCmdDrawIndexed(commandBuffer, particles.particleGeometry.indices.size(), particles.PCount(), 0, 0, 0);
 			vkCmdEndRendering(commandBuffer);
+			engine.barrier.transitionDepthAttachmentToReadOnly(commandBuffer, FDTextureHandle.image);
+
+			engine.barrier.transitionImageFromUndefinedToColorAttachment(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
+			Engine::RenderingAttachment renderingAttachment = engine.setRenderingAttachment(engine.swapchainManager.imageViews[engine.swapchainManager.imageIndex]);
+			vkCmdBeginRendering(commandBuffer, &renderingAttachment.renderingInfo);
+			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, FinalPipeline);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, FinalPipelineLayout, 0, 1, &FDTextureDescriptorSet, 0, nullptr);
+			vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+			vkCmdEndRendering(commandBuffer);
 			engine.barrier.transitionImageFromColorAttachmentToPresent(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
-			
+
+
+			//VkDeviceSize offset = 0;
+			//engine.barrier.transitionImageFromUndefinedToColorAttachment(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
+			//Engine::RenderingAttachment renderingAttachment = engine.setRenderingAttachment(engine.swapchainManager.imageViews[engine.swapchainManager.imageIndex] );
+			//vkCmdBeginRendering(commandBuffer, &renderingAttachment.renderingInfo );
+			//vkCmdBindVertexBuffers(commandBuffer, 0, 1, &particles.particleGeometry.VHandle.buffer, &offset);
+			//vkCmdBindIndexBuffer(commandBuffer, particles.particleGeometry.IHandle.buffer, 0, VK_INDEX_TYPE_UINT32);
+			//vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipelineLayout, 0, 1, &particles.PBDescriptorSet, 0, nullptr);
+			//vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipelineLayout, 1, 1, &UBDescriptorSet, 0, nullptr);
+			//vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
+			//vkCmdDrawIndexed(commandBuffer, particles.particleGeometry.indices.size(), particles.PCount(), 0, 0, 0);
+			//vkCmdEndRendering(commandBuffer);
+			//engine.barrier.transitionImageFromColorAttachmentToPresent(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
+
 			vkEndCommandBuffer(commandBuffer);
 
 			VkSemaphore waitSemaphores[] = {

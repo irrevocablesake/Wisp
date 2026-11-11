@@ -17,6 +17,16 @@ class Barriers {
 			VkImage& image
 		);
 
+		void transitionDepthAttachmentToReadOnly(
+			VkCommandBuffer& commandBuffer,
+			VkImage& image
+		);
+
+		void transitionDepthReadOnlyToAttachment(
+			VkCommandBuffer& commandBuffer,
+			VkImage& image
+		);
+
 		VkCommandBuffer beginOneTimeCommand( VkDevice& device, VkCommandPool& commandPool );
 		void endOneTimeCommand(VkDevice device, VkCommandBuffer& commandBuffer, VkQueue queue );
 
