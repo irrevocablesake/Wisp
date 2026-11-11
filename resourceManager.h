@@ -50,7 +50,7 @@ class ResourceManager {
 
 	public:
 		void uploadData(BufferHandle& targetBuffer, const void* data, size_t size);
-		void setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags, bool interop = false );
+		void setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags, bool isHostMappable, bool isDedicated, bool isInterOp);
 		void copyDataIntoBuffer( void* destination, const void* source, size_t size );
 
 		void generateTexture( TextureHandle& handle, VkImageUsageFlags usage, VkImageAspectFlags aspectMask );

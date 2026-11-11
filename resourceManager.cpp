@@ -7,7 +7,8 @@ void ResourceManager::copyDataIntoBuffer(void* destination, const void* source, 
 	memcpy(destination, source, size);
 }
 
-void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags, bool interop) {
+//NOTE: POSSIBLY? A BETTER WAY TO DO THE BOOL PARAMETRS?
+void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags, bool isHostMappable, bool isDedicated, bool isInterOp ) {
 	VkExternalMemoryBufferCreateInfo externalBufferInfo{
 		.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
 		.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
@@ -15,7 +16,7 @@ void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags
 
 	VkBufferCreateInfo bufferCreateInfo{
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-		.pNext = interop ? &externalBufferInfo : nullptr,
+		.pNext = isInterOp ? &externalBufferInfo : nullptr,
 		.size = handle.size,
 		.usage = flags | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
 	};
@@ -24,13 +25,14 @@ void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags
 		.usage = VMA_MEMORY_USAGE_AUTO
 	};
 
-	if (interop) {
+	if (isInterOp) {
+		allocationCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+		allocationCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+
 		VkExportMemoryAllocateInfo exportInfo{
 			.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
 			.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
 		};
-
-		allocationCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
 
 		vmaCreateDedicatedBuffer(
 			vulkanContext->allocatorIF.handle,
@@ -42,8 +44,22 @@ void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags
 			&handle.allocationInfo
 		);
 	}
-	else {
-		allocationCreateInfo.flags = 
+	else if ( isDedicated ) {
+		allocationCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+		allocationCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+
+		vmaCreateBuffer(
+			vulkanContext->allocatorIF.handle,
+			&bufferCreateInfo,
+			&allocationCreateInfo,
+			&handle.buffer,
+			&handle.allocation,
+			&handle.allocationInfo
+		);
+	}
+	else if( isHostMappable ){
+		allocationCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
+		allocationCreateInfo.flags =
 			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
 			VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
 			VMA_ALLOCATION_CREATE_MAPPED_BIT;

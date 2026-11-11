@@ -78,7 +78,7 @@ class Wisp {
 	float deltaTime = 0.0f;
 	void setupUB(){
 		UBHandle.size = sizeof( UniformData );
-		engine.resourceManager.setupBuffer(UBHandle, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true);
+		engine.resourceManager.setupBuffer(UBHandle, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true, false, false );
 
 		VkDescriptorSetLayoutBinding binding{
 			.binding = 0,

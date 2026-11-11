@@ -46,7 +46,7 @@ class Particles {
 	public:
 		void memoryAllocator( Engine::BufferHandle &BufferHandle, size_t size, VkDescriptorSet &descriptorSet, VkDescriptorSetLayout &descriptorSetLayout ) {
 			BufferHandle.size = size;
-			engine->resourceManager.setupBuffer(BufferHandle, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true);
+			engine->resourceManager.setupBuffer(BufferHandle, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, false, false, true );
 
 			VkDescriptorSetLayoutBinding binding{
 				.binding = 0,
@@ -151,7 +151,7 @@ class Particles {
 			}
 
 			memoryAllocator(BPHandle, boundaryParticles.size() * sizeof(BoundaryParticle), BPDescriptorSet, BPDescriptorSetLayout);
-			engine->resourceManager.copyDataIntoBuffer(BPHandle.allocationInfo.pMappedData, boundaryParticles.data(), BPHandle.size);
+			engine->resourceManager.uploadData(BPHandle, boundaryParticles.data(), BPHandle.size);
 
 			simulationParams->boundaryParticlesCount = static_cast< uint32_t > ( boundaryParticles.size() );
 			float PADDING = 3.0f * simulationParams->boundarySpacing;
@@ -222,7 +222,7 @@ class Particles {
 
 			GENERATION_DONE:
 				memoryAllocator(PBHandle, particles.size() * sizeof(Particle), PBDescriptorSet, PBDescriptorSetLayout );
-				engine->resourceManager.copyDataIntoBuffer(PBHandle.allocationInfo.pMappedData, particles.data(), PBHandle.size);
+				engine->resourceManager.uploadData(PBHandle, particles.data(), PBHandle.size);
 		}
 
 		void generate(Engine& _engine, CPUSimulationParams& _simulationParams) {

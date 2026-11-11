@@ -74,13 +74,13 @@ public:
 
         //VERTEX BUFFER
         geometry.VHandle.size = sizeof(Vertex) * geometry.vertices.size();
-        resourceManager -> setupBuffer(geometry.VHandle, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-        resourceManager -> copyDataIntoBuffer(geometry.VHandle.allocationInfo.pMappedData, geometry.vertices.data(), geometry.VHandle.size);
+        resourceManager->setupBuffer(geometry.VHandle, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, false, true, false );
+        resourceManager ->uploadData(geometry.VHandle, geometry.vertices.data(), geometry.VHandle.size);
 
         //INDEX BUFFER
         geometry.IHandle.size = sizeof(uint32_t) * geometry.indices.size();
-        resourceManager -> setupBuffer(geometry.IHandle, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-        resourceManager -> copyDataIntoBuffer(geometry.IHandle.allocationInfo.pMappedData, geometry.indices.data(), geometry.IHandle.size);
+        resourceManager -> setupBuffer(geometry.IHandle, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, false, true, false );
+        resourceManager -> uploadData(geometry.IHandle, geometry.indices.data(), geometry.IHandle.size);
 
         return geometry;
 	}
