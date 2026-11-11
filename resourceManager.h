@@ -49,6 +49,7 @@ class ResourceManager {
 		VkDescriptorPool descriptorPool;
 
 	public:
+		void uploadData(BufferHandle& targetBuffer, const void* data, size_t size);
 		void setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags, bool interop = false );
 		void copyDataIntoBuffer( void* destination, const void* source, size_t size );
 

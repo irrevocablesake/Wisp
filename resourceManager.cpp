@@ -8,45 +8,34 @@ void ResourceManager::copyDataIntoBuffer(void* destination, const void* source, 
 }
 
 void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags, bool interop) {
-
-	VkBufferCreateInfo uniformBufferCreateInfo{};
-
 	VkExternalMemoryBufferCreateInfo externalBufferInfo{
 		.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
 		.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
 	};
 
-	VkExportMemoryAllocateInfo exportInfo{
-		.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
-		.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
-	};
-
-	uniformBufferCreateInfo = {
+	VkBufferCreateInfo bufferCreateInfo{
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.pNext = interop ? &externalBufferInfo : nullptr,
 		.size = handle.size,
-		.usage = flags | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+		.usage = flags | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
 	};
 
-	VmaAllocationCreateFlags allocFlags =
-		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-		VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
-		VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-	if (interop) {
-		allocFlags |= VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-	}
-
-	VmaAllocationCreateInfo uniformBufferAllocationCreateInfo{
-		.flags = allocFlags,
+	VmaAllocationCreateInfo allocationCreateInfo{
 		.usage = VMA_MEMORY_USAGE_AUTO
 	};
 
 	if (interop) {
+		VkExportMemoryAllocateInfo exportInfo{
+			.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
+			.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
+		};
+
+		allocationCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+
 		vmaCreateDedicatedBuffer(
 			vulkanContext->allocatorIF.handle,
-			&uniformBufferCreateInfo,
-			&uniformBufferAllocationCreateInfo,
+			&bufferCreateInfo,
+			&allocationCreateInfo,
 			&exportInfo,
 			&handle.buffer,
 			&handle.allocation,
@@ -54,23 +43,32 @@ void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags
 		);
 	}
 	else {
+		allocationCreateInfo.flags = 
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
+			VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
 		vmaCreateBuffer(
 			vulkanContext->allocatorIF.handle,
-			&uniformBufferCreateInfo,
-			&uniformBufferAllocationCreateInfo,
+			&bufferCreateInfo,
+			&allocationCreateInfo,
 			&handle.buffer,
 			&handle.allocation,
 			&handle.allocationInfo
 		);
 	}
 
-	VkBufferDeviceAddressInfo uniformBDAInfo{
+	VkBufferDeviceAddressInfo bufferBDAInfo{
 		.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
 		.buffer = handle.buffer
 	};
 
-	handle.deviceAddress = vkGetBufferDeviceAddress(vulkanContext->logicalDeviceIF.handle, &uniformBDAInfo);
+	handle.deviceAddress = vkGetBufferDeviceAddress(
+		vulkanContext->logicalDeviceIF.handle,
+		&bufferBDAInfo
+	);
 }
+
 
 HANDLE ResourceManager::exportBuffer(BufferHandle& handle) {
 
@@ -219,6 +217,46 @@ std::vector< VkDescriptorSet > ResourceManager::allocateDescriptorSets(std::vect
 	vkAllocateDescriptorSets(vulkanContext->logicalDeviceIF.handle, &descriptorAllocateInfo, descriptorSet.data());
 
 	return descriptorSet;
+}
+
+//NOTE: It is better we use a memory barrier, to ensure that the copied data is available before we start working on it. TODO
+void ResourceManager::uploadData( BufferHandle& bufferHandle, const void* data, size_t size) {
+	VkBufferCreateInfo stagingInfo{
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = size,
+		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+	};
+
+	VmaAllocationCreateInfo stagingAllocInfo{
+		.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+		.usage = VMA_MEMORY_USAGE_AUTO
+	};
+
+	VkBuffer stagingBuffer;
+	VmaAllocation stagingAllocation;
+	VmaAllocationInfo stagingAllocInfoResult;
+
+	vmaCreateBuffer(
+		vulkanContext->allocatorIF.handle,
+		&stagingInfo,
+		&stagingAllocInfo,
+		&stagingBuffer,
+		&stagingAllocation,
+		&stagingAllocInfoResult
+	);
+
+	memcpy(stagingAllocInfoResult.pMappedData, data, size);
+
+	VkCommandBuffer commandBuffer = barrier.beginOneTimeCommand( vulkanContext->logicalDeviceIF.handle, vulkanContext->commandPool );
+	VkBufferCopy copyRegion{ 
+		.srcOffset = 0,
+		.dstOffset = 0,
+		.size = size
+	};
+	vkCmdCopyBuffer(commandBuffer, stagingBuffer, bufferHandle.buffer, 1, &copyRegion);
+	barrier.endOneTimeCommand( vulkanContext->logicalDeviceIF.handle, commandBuffer, vulkanContext->queueIF.handle );
+
+	vmaDestroyBuffer(vulkanContext->allocatorIF.handle, stagingBuffer, stagingAllocation);
 }
 
 VkDescriptorSet ResourceManager::allocateDescriptorSets( VkDescriptorSetLayout layout ){
