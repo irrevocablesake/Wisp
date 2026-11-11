@@ -288,6 +288,18 @@ class Wisp {
 		cudaInterface.particlesKernel.cudaBuffer = PResult.devicePointer;
 		cudaInterface.particlesKernel.externalMemory = PResult.externalMemory;
 
+		HANDLE PsharedHandleB = engine.resourceManager.exportBuffer(particles.PBHandleB);
+
+		CudaInterface::CudaBuffer PResultB = cudaInterface.cudaContext.importBuffer(
+			PsharedHandleB,
+			particles.PBHandleB.allocationInfo.size,
+			particles.PBHandleB.size
+		);
+
+		cudaInterface.particlesKernel.cudaBufferB = PResultB.devicePointer;
+		cudaInterface.particlesKernel.externalMemoryB = PResultB.externalMemory;
+
+
 		HANDLE BPsharedHandle = engine.resourceManager.exportBuffer(particles.BPHandle);
 
 		CudaInterface::CudaBuffer BPResult = cudaInterface.cudaContext.importBuffer(
@@ -304,7 +316,7 @@ class Wisp {
 		engine.configure("Wisp", VK_API_VERSION_1_4);
 
 		engine.resourceManager.setupDescriptorPool({
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 },
 			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 }
 		});
@@ -485,6 +497,11 @@ class Wisp {
 				&submitInfo,
 				engine.getCurrentFrame().frameFence
 			);
+
+			VkDescriptorSet descriptorSet =
+				cudaInterface.particlesKernel.currentBufferIndex == 0
+				? particles.PBDescriptorSet
+				: particles.PBDescriptorSetB;
 
 			cudaInterface.simulate();
 

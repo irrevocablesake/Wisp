@@ -11,17 +11,23 @@ void CudaInterface::initialize(const std::array< uint8_t, 16 >& deviceUUID, cons
 cudaExternalSemaphore_t CudaInterface::importSemaphore(HANDLE vkToCudaHandle) {
 	return cudaContext.importSemaphores(vkToCudaHandle );
 }
-void CudaInterface::simulate() {
+void CudaInterface::simulate(){
     cudaWaitingForVulkan();
 
     particlesKernel.generateIDs();
     particlesKernel.sortIDs();
     particlesKernel.launchReorder();
-
     particlesKernel.buildCellRanges();
     particlesKernel.calculateDensityAndPressure();
     particlesKernel.calculatePressureAndViscosityForces();
     particlesKernel.updateParticles(0.005f);
+    
+    std::swap(
+        particlesKernel.particleBufferA,
+        particlesKernel.particleBufferB
+    );
+
+    particlesKernel.currentBufferIndex ^= 1;
 
     signalCudaFinished();
 }

@@ -29,6 +29,10 @@ class Particles {
 
 		Engine::BufferHandle PBHandle;
 		VkDescriptorSet PBDescriptorSet;
+
+		Engine::BufferHandle PBHandleB;
+		VkDescriptorSet PBDescriptorSetB;
+
 		VkDescriptorSetLayout PBDescriptorSetLayout;
 
 		struct BoundaryParticle {
@@ -48,14 +52,17 @@ class Particles {
 			BufferHandle.size = size;
 			engine->resourceManager.setupBuffer(BufferHandle, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, false, false, true );
 
-			VkDescriptorSetLayoutBinding binding{
-				.binding = 0,
-				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-				.descriptorCount = 1,
-				.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
-			};
+			if (descriptorSetLayout == VK_NULL_HANDLE) {
+				VkDescriptorSetLayoutBinding binding{
+					.binding = 0,
+					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+					.descriptorCount = 1,
+					.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+				};
 
-			descriptorSetLayout = engine->resourceManager.createDescriptorSetLayout({ binding });
+				descriptorSetLayout = engine->resourceManager.createDescriptorSetLayout({ binding });
+			}
+
 			descriptorSet = engine->resourceManager.allocateDescriptorSets({ descriptorSetLayout });
 
 			VkDescriptorBufferInfo bufferInfo{
@@ -223,6 +230,9 @@ class Particles {
 			GENERATION_DONE:
 				memoryAllocator(PBHandle, particles.size() * sizeof(Particle), PBDescriptorSet, PBDescriptorSetLayout );
 				engine->resourceManager.uploadData(PBHandle, particles.data(), PBHandle.size);
+
+				memoryAllocator(PBHandleB, particles.size() * sizeof(Particle), PBDescriptorSetB, PBDescriptorSetLayout);
+				engine->resourceManager.uploadData(PBHandleB, particles.data(), PBHandleB.size);
 		}
 
 		void generate(Engine& _engine, CPUSimulationParams& _simulationParams) {

@@ -16,8 +16,26 @@ class ParticlesKernel {
 		float SPIKY_COEFFICIENT = 0;
 		float VISCOSITY_COEFFICIENT = 0;
 		
+		struct CudaParticle {
+			float4 position;
+			float4 velocity;
+			float density;
+			float pressure;
+			float padding[2]{};
+			float4 pressureForces;
+			float4 viscosityForces;
+		};
+
 		cudaExternalMemory_t externalMemory{};
 		void* cudaBuffer = nullptr;
+
+		cudaExternalMemory_t externalMemoryB{};
+		void* cudaBufferB = nullptr;
+
+		CudaParticle* particleBufferA = nullptr;
+		CudaParticle* particleBufferB = nullptr;
+
+		uint32_t currentBufferIndex = 0;
 
 		cudaExternalMemory_t BPexternalMemory{};
 		void* BPcudaBuffer = nullptr;
@@ -35,21 +53,10 @@ class ParticlesKernel {
 
 		uint32_t* neighborCounts = nullptr;
 
-		struct CudaParticle {
-			float4 position;
-			float4 velocity;
-			float density;
-			float pressure;
-			float padding[2]{};
-			float4 pressureForces;
-			float4 viscosityForces;
-		};
 
 		struct BoundaryParticle {
 			float4 position{};
 		};
-
-		CudaParticle* sortedParticles = nullptr;
 
 		const GPUSimulationParams *simulationParams = nullptr;
 

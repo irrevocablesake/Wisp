@@ -564,7 +564,7 @@ void ParticlesKernel::initializeBoundaryGrid()
         boundaryGridDimensions,
         simulationParams->cellSize,
         boundaryParticleCellIds
-        );
+    );
 
     // Determine CUB temporary storage requirements.
     cub::DeviceRadixSort::SortPairs(
@@ -659,13 +659,13 @@ void ParticlesKernel::sortIDs() {
 
 void ParticlesKernel::generateIDs() {
     generateIDsKernel << <BLOCKS_COUNT, THREADS_PER_BLOCK, 0, cudaContext->stream >> > (
-        static_cast<CudaParticle*>(cudaBuffer),
+        particleBufferA,
         simulationParams->particlesCount,
         simulationParams->bounds.min,
         simulationParams->gridDimensions,
         simulationParams->cellSize,
         particleCellIds
-        );
+    );
 }
 
 void ParticlesKernel::calculateDensityAndPressure() {
@@ -681,7 +681,7 @@ void ParticlesKernel::calculateDensityAndPressure() {
         0,
         cudaContext->stream
         >> > (
-            sortedParticles,
+            particleBufferB,
 
             static_cast<BoundaryParticle*>(BPcudaBuffer),
             simulationParams->boundaryParticlesCount,
@@ -722,7 +722,7 @@ void ParticlesKernel::calculatePressureAndViscosityForces()
         0,
         cudaContext->stream
         >> > (
-            sortedParticles,
+            particleBufferB,
             simulationParams -> particlesCount,
             simulationParams -> mass,
             simulationParams -> smoothingRadius,
@@ -797,15 +797,13 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext, GPUSimulationParams 
     SPIKY_COEFFICIENT = -45.0f / (CUDART_PI_F * h6 );
     VISCOSITY_COEFFICIENT = 45.0f / (CUDART_PI_F * h6 );
 
-    cudaMalloc(
-        reinterpret_cast<void**>(&sortedParticles),
-        simulationParams->particlesCount * sizeof(CudaParticle)
-    );
+    particleBufferA = static_cast<ParticlesKernel::CudaParticle*>(cudaBuffer);
+    particleBufferB = static_cast<ParticlesKernel::CudaParticle*>(cudaBufferB);
 }
 
 __global__ void reorderParticlesKernel(
     const ParticlesKernel::CudaParticle* particles,
-    ParticlesKernel::CudaParticle* sortedParticles,
+    ParticlesKernel::CudaParticle* reorderedParticles,
     const uint32_t* sortedParticleIndices,
     uint32_t particleCount)
 {
@@ -816,18 +814,19 @@ __global__ void reorderParticlesKernel(
 
     uint32_t originalIndex = sortedParticleIndices[i];
 
-    sortedParticles[i] = particles[originalIndex];
+    reorderedParticles[i] = particles[originalIndex];
 }
 
-void ParticlesKernel::launchReorder() {
+void ParticlesKernel::launchReorder()
+{
     reorderParticlesKernel << <
         BLOCKS_COUNT,
         THREADS_PER_BLOCK,
         0,
         cudaContext->stream
         >> > (
-            static_cast<CudaParticle*>(cudaBuffer),
-            sortedParticles,
+            particleBufferA,
+            particleBufferB,
             sortedParticleIndices,
             simulationParams->particlesCount
             );
@@ -841,7 +840,7 @@ void ParticlesKernel::updateParticles(float deltaTime)
         0,
         cudaContext->stream
         >> > (
-            sortedParticles,
+            particleBufferB,
             simulationParams->particlesCount,
             deltaTime,
             simulationParams->gravity,
@@ -850,13 +849,5 @@ void ParticlesKernel::updateParticles(float deltaTime)
             simulationParams->bounds.max,
             simulationParams->particleRadius,
             simulationParams->restitution
-            );
-
-    cudaMemcpyAsync(
-        cudaBuffer,
-        sortedParticles,
-        simulationParams->particlesCount * sizeof(CudaParticle),
-        cudaMemcpyDeviceToDevice,
-        cudaContext->stream
-    );
+        );
 }
