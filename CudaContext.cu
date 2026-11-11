@@ -1,4 +1,4 @@
-#include "CudaContext.h"
+#include "CudaContext.cuh"
 
 #include <cuda_runtime.h>
 
