@@ -425,12 +425,17 @@ class Wisp {
 				.pDepthAttachment = &depthAttachmentInfo
 			};
 
+			VkDescriptorSet descriptorSet =
+				cudaInterface.particlesKernel.currentBufferIndex == 0
+				? particles.PBDescriptorSet
+				: particles.PBDescriptorSetB;
+
 			VkDeviceSize offset1 = 0;
 			vkCmdBeginRendering(commandBuffer, &renderingInfo);
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, DepthPipeline);
 			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &particles.particleGeometry.VHandle.buffer, &offset1);
 			vkCmdBindIndexBuffer(commandBuffer, particles.particleGeometry.IHandle.buffer, 0, VK_INDEX_TYPE_UINT32);
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, DepthPipelineLayout, 0, 1, &particles.PBDescriptorSet, 0, nullptr);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, DepthPipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, DepthPipelineLayout, 1, 1, &UBDescriptorSet, 0, nullptr);
 			vkCmdDrawIndexed(commandBuffer, particles.particleGeometry.indices.size(), particles.PCount(), 0, 0, 0);
 			vkCmdEndRendering(commandBuffer);
@@ -497,11 +502,6 @@ class Wisp {
 				&submitInfo,
 				engine.getCurrentFrame().frameFence
 			);
-
-			VkDescriptorSet descriptorSet =
-				cudaInterface.particlesKernel.currentBufferIndex == 0
-				? particles.PBDescriptorSet
-				: particles.PBDescriptorSetB;
 
 			cudaInterface.simulate();
 
