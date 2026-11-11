@@ -22,10 +22,10 @@ struct CPUSimulationParams {
 
 	//int particlesCount = 40960;
 	//int particlesCount = 131072;
-	int particlesCount = 102400;
+	// int particlesCount = 102400;
 	//int particlesCount = 204800;
 	//int particlesCount = 409600;
-	//int particlesCount = 1024000;
+	int particlesCount = 1024000;
 
 	float gasConstant = 0.006f;
 
