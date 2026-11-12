@@ -232,7 +232,7 @@ __global__ void updateKernel(
 //Note: Function from the paper, just use as an abstraction - will understand later, basically says: How much influcence P2 will have on P1 based on r and h, returns a weight
 
 //NOTE: We can modify this function to use findNeighbours - just quite a repeattion of code, will fix later - bored for this now
-__global__ void __launch_bounds__(256, 2) calculateDensityAndPressureKernel(
+__global__ void __launch_bounds__(THREADS_PER_BLOCK, 2) calculateDensityAndPressureKernel(
     ParticlesKernel::CudaParticle* particles,
 
     const ParticlesKernel::BoundaryParticle* boundaryParticles,
@@ -373,7 +373,7 @@ __global__ void __launch_bounds__(256, 2) calculateDensityAndPressureKernel(
 
 }
 
-__global__ void __launch_bounds__(256, 2) calculatePressureAndViscosityForcesKernel(
+__global__ void __launch_bounds__(THREADS_PER_BLOCK, 2) calculatePressureAndViscosityForcesKernel(
     ParticlesKernel::CudaParticle* particles,
     uint32_t particleCount,
     float particleMass,
@@ -393,8 +393,8 @@ __global__ void __launch_bounds__(256, 2) calculatePressureAndViscosityForcesKer
     TimeStep::PartialStep* partialStep,
     TimeStep::Step* step
 ){
-    __shared__ float sharedMaxVelocity[256];
-    __shared__ float sharedMaxAcceleration[256];
+    __shared__ float sharedMaxVelocity[THREADS_PER_BLOCK];
+    __shared__ float sharedMaxAcceleration[THREADS_PER_BLOCK];
 
     if (step->accumulator <= 1e-6f)
         return;

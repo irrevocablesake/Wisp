@@ -102,7 +102,7 @@ __global__ void calculateFinalAdaptiveTimeStepKernel(
 void TimeStep::calculateAdaptiveTimeStep(){
     const uint32_t blocks = (simulationParams->particlesCount + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
-    calculateFinalAdaptiveTimeStepKernel << < 1, 256, 0, stream >> > (
+    calculateFinalAdaptiveTimeStepKernel << < 1, THREADS_PER_BLOCK, 0, stream >> > (
         stepBuffer.partialStepBuffer,
         blocks,
         simulationParams->smoothingRadius,
