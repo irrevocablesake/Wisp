@@ -13,20 +13,25 @@ struct CPUSimulationParams {
 
 	int boundaryLayers = 3;
 
-	float particleRadius = 0.02f;
+	float particleRadius = 0.06f;
 	float restitution = 0.8f;
 	float smoothingRadius = 0.08f;
 	float mass = 1.0f;
-	float viscosityCoefficient = 0.1f;
+	float viscosityCoefficient = 0.01f;
 	float restDensity = 1000.0f;
+
+	float speedOfSound = 0.7746f;
+	float cflCoefficient = 0.4f;
+	float accelerationCoefficient = 0.2f;
+	float maxDeltaTime = 0.04f;
 
 	//int particlesCount = 40960;
 	//int particlesCount = 131072;
-	// int particlesCount = 102400;
+	 //int particlesCount = 102400;
 	//int particlesCount = 204800;
 	//int particlesCount = 409600;
-	//int particlesCount = 1024000;
-	int particlesCount = 2048000;
+	int particlesCount = 1024000;
+	//int particlesCount = 2048000;
 
 	float gasConstant = 0.006f;
 
