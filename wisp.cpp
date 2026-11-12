@@ -503,13 +503,14 @@ class Wisp {
 				engine.getCurrentFrame().frameFence
 			);
 
-			constexpr unsigned int MAX_SUBSTEPS = 1;
-
+			constexpr unsigned int MAX_SUBSTEPS = 2;
+			cudaInterface.cudaWaitingForVulkan();
 			cudaInterface.timeStep.addFrameTimeToAccumulator(deltaTime);
 			for (unsigned int step = 0; step < MAX_SUBSTEPS; ++step){
 				cudaInterface.simulate();
 			}
 
+			cudaInterface.signalCudaFinished();
 			engine.vulkanContext.currentFrame = (engine.vulkanContext.currentFrame + 1) % engine.vulkanContext.MAX_FRAMES_IN_FLIGHT;
 
 			VkPresentInfoKHR presentInfo{
