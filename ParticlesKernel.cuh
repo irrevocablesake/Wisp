@@ -8,8 +8,6 @@ class ParticlesKernel {
 	public:
 		CudaContext* cudaContext;
 	public:
-
-		int THREADS_PER_BLOCK = 0;
 		int BLOCKS_COUNT = 0;
 		int BOUNDARY_BLOCKS_COUNT = 0;
 		float POLY6_COEFFICIENT = 0;
