@@ -3,19 +3,21 @@
 #include <cuda_runtime.h>
 #include "CudaContext.cuh"
 #include "GPUSimulationParams.h"
+#include "AdaptiveTimeStep.cuh"
 
 class ParticlesKernel {
 	public:
 		CudaContext* cudaContext;
 	public:
 
-		int THREADS_PER_BLOCK = 0;
 		int BLOCKS_COUNT = 0;
 		int BOUNDARY_BLOCKS_COUNT = 0;
 		float POLY6_COEFFICIENT = 0;
 		float SPIKY_COEFFICIENT = 0;
 		float VISCOSITY_COEFFICIENT = 0;
 		
+		TimeStep *timeStep;
+
 		struct CudaParticle {
 			float4 position;
 			float4 velocity;
@@ -75,9 +77,9 @@ class ParticlesKernel {
 
 		void initializeBoundaryGrid();
 
-		void initialize( CudaContext& _cudaContext, GPUSimulationParams& _simulationParams );
+		void initialize( CudaContext& _cudaContext, GPUSimulationParams& _simulationParams, TimeStep &_timeStep );
 
-		void updateParticles( float deltaTime );
+		void updateParticles();
 		void generateIDs();
 		void sortIDs();
 		void buildCellRanges();

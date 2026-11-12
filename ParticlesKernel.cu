@@ -159,14 +159,17 @@ __global__ void buildCellRangesKernel( const uint32_t* sortedCellIds, uint32_t* 
 __global__ void updateKernel(
     ParticlesKernel::CudaParticle* particles,
     unsigned int count,
-    float deltaTime,
     float gravity,
     float particleMass,
     float3 boundsMin,
     float3 boundsMax,
     float radius,
-    float restitution)
-{
+    float restitution,
+    TimeStep::Step *step){
+    float deltaTime = step->deltaTime;
+    if ( deltaTime <= 0.0f )
+        return;
+
     unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index >= count)
@@ -216,12 +219,20 @@ __global__ void updateKernel(
         particle.position.z = boundsMax.z - radius;
         particle.velocity.z = -fabsf(particle.velocity.z) * restitution;
     }
+
+    if (index == 0)
+    {
+        step->accumulator = fmaxf( 0.0f, step->accumulator - deltaTime );
+
+        if (step->accumulator <= 1e-6f)
+            step->accumulator = 0.0f;
+    }
 }
 //NOTE: Later i think we either can remove this function or modify it to make it work with calculateDensityKernel
 //Note: Function from the paper, just use as an abstraction - will understand later, basically says: How much influcence P2 will have on P1 based on r and h, returns a weight
 
 //NOTE: We can modify this function to use findNeighbours - just quite a repeattion of code, will fix later - bored for this now
-__global__ void __launch_bounds__(512, 2) calculateDensityAndPressureKernel(
+__global__ void __launch_bounds__(256, 2) calculateDensityAndPressureKernel(
     ParticlesKernel::CudaParticle* particles,
 
     const ParticlesKernel::BoundaryParticle* boundaryParticles,
@@ -249,9 +260,13 @@ __global__ void __launch_bounds__(512, 2) calculateDensityAndPressureKernel(
 
     float3 boundaryGridOrigin,
     uint3 boundaryGridDimensions,
-    float poly6Coefficient
-    )
-{
+    float poly6Coefficient,
+
+    TimeStep::Step* step
+    ){
+    if (step->accumulator <= 1e-6f)
+        return;
+
     uint32_t particleID = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (particleID >= particleCount)
@@ -358,7 +373,7 @@ __global__ void __launch_bounds__(512, 2) calculateDensityAndPressureKernel(
 
 }
 
-__global__ void __launch_bounds__(512, 2) calculatePressureAndViscosityForcesKernel(
+__global__ void __launch_bounds__(256, 2) calculatePressureAndViscosityForcesKernel(
     ParticlesKernel::CudaParticle* particles,
     uint32_t particleCount,
     float particleMass,
@@ -371,149 +386,193 @@ __global__ void __launch_bounds__(512, 2) calculatePressureAndViscosityForcesKer
     float cellSize,
     uint3 gridDimensions,
 
-    const uint32_t* __restrict__ cellStart,
-    const uint32_t* __restrict__ cellEnd
-    )
-{
-    uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    float gravity,
 
-    if (i >= particleCount)
+    const uint32_t* __restrict__ cellStart,
+    const uint32_t* __restrict__ cellEnd,
+    TimeStep::PartialStep* partialStep,
+    TimeStep::Step* step
+){
+    __shared__ float sharedMaxVelocity[256];
+    __shared__ float sharedMaxAcceleration[256];
+
+    if (step->accumulator <= 1e-6f)
         return;
 
-    const ParticlesKernel::CudaParticle particle = particles[i];
+    uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
 
-    float3 position = make_float3(
-        particle.position.x,
-        particle.position.y,
-        particle.position.z
-    );
+    float localMaxVelocity = 0.0f;
+    float localMaxAcceleration = 0.0f;
 
-    float3 velocity = make_float3(
-        particle.velocity.x,
-        particle.velocity.y,
-        particle.velocity.z
-    );
+    if (i < particleCount) {
+        const ParticlesKernel::CudaParticle particle = particles[i];
 
-    float3 pressureForce = make_float3(0.0f, 0.0f, 0.0f);
-    float3 viscosityForce = make_float3(0.0f, 0.0f, 0.0f);
+        float3 position = make_float3(
+            particle.position.x,
+            particle.position.y,
+            particle.position.z
+        );
 
-    float smoothingRadiusSquared = smoothingRadius * smoothingRadius;
+        float3 velocity = make_float3(
+            particle.velocity.x,
+            particle.velocity.y,
+            particle.velocity.z
+        );
 
-    int3 cell = make_int3(
-        static_cast<int>(floorf((position.x - gridOrigin.x) / cellSize)),
-        static_cast<int>(floorf((position.y - gridOrigin.y) / cellSize)),
-        static_cast<int>(floorf((position.z - gridOrigin.z) / cellSize))
-    );
+        float3 pressureForce = make_float3(0.0f, 0.0f, 0.0f);
+        float3 viscosityForce = make_float3(0.0f, 0.0f, 0.0f);
+
+        float smoothingRadiusSquared = smoothingRadius * smoothingRadius;
+
+        int3 cell = make_int3(
+            static_cast<int>(floorf((position.x - gridOrigin.x) / cellSize)),
+            static_cast<int>(floorf((position.y - gridOrigin.y) / cellSize)),
+            static_cast<int>(floorf((position.z - gridOrigin.z) / cellSize))
+        );
 
     #pragma unroll
-    for (int z = -MAX_SEARCH_RADIUS; z <= MAX_SEARCH_RADIUS; ++z)
-    {
-        #pragma unroll
-        for (int y = -MAX_SEARCH_RADIUS; y <= MAX_SEARCH_RADIUS; ++y)
+        for (int z = -MAX_SEARCH_RADIUS; z <= MAX_SEARCH_RADIUS; ++z)
         {
-            #pragma unroll
-            for (int x = -MAX_SEARCH_RADIUS; x <= MAX_SEARCH_RADIUS; ++x)
+    #pragma unroll
+            for (int y = -MAX_SEARCH_RADIUS; y <= MAX_SEARCH_RADIUS; ++y)
             {
-                int3 neighbourCell = make_int3(
-                    cell.x + x,
-                    cell.y + y,
-                    cell.z + z
-                );
-
-                if (neighbourCell.x < 0 ||
-                    neighbourCell.y < 0 ||
-                    neighbourCell.z < 0 ||
-                    neighbourCell.x >= static_cast<int>(gridDimensions.x) ||
-                    neighbourCell.y >= static_cast<int>(gridDimensions.y) ||
-                    neighbourCell.z >= static_cast<int>(gridDimensions.z))
+    #pragma unroll
+                for (int x = -MAX_SEARCH_RADIUS; x <= MAX_SEARCH_RADIUS; ++x)
                 {
-                    continue;
-                }
-
-                uint32_t cellId = neighbourCell.x + gridDimensions.x * (neighbourCell.y + gridDimensions.y * neighbourCell.z);
-
-                uint32_t start = __ldg(&cellStart[cellId]);
-                uint32_t end = __ldg(&cellEnd[cellId]);
-
-                if (start == UINT_MAX)
-                    continue;
-
-                for (uint32_t k = start; k < end; ++k) {
-                    if (i == k) continue;
-
-                    const ParticlesKernel::CudaParticle* nPtr = &particles[k];
-                    float3 nPos = make_float3(__ldg(&nPtr->position.x), __ldg(&nPtr->position.y), __ldg(&nPtr->position.z));
-                    float3 nVel = make_float3(__ldg(&nPtr->velocity.x), __ldg(&nPtr->velocity.y), __ldg(&nPtr->velocity.z));
-                    float nDensity = __ldg(&nPtr->density);
-                    float nPress = __ldg(&nPtr->pressure);
-
-                    float3 displacement = make_float3(
-                        position.x - nPos.x,
-                        position.y - nPos.y,
-                        position.z - nPos.z
+                    int3 neighbourCell = make_int3(
+                        cell.x + x,
+                        cell.y + y,
+                        cell.z + z
                     );
 
-                    float distanceSquared = 
-                        displacement.x * displacement.x +
-                        displacement.y * displacement.y +
-                        displacement.z * displacement.z;
+                    if (neighbourCell.x < 0 ||
+                        neighbourCell.y < 0 ||
+                        neighbourCell.z < 0 ||
+                        neighbourCell.x >= static_cast<int>(gridDimensions.x) ||
+                        neighbourCell.y >= static_cast<int>(gridDimensions.y) ||
+                        neighbourCell.z >= static_cast<int>(gridDimensions.z))
+                    {
+                        continue;
+                    }
 
-                    if (distanceSquared > 0.0f && distanceSquared < smoothingRadiusSquared) {
-                        float distance = sqrtf(distanceSquared);
-                        float difference = smoothingRadius - distance;
+                    uint32_t cellId = neighbourCell.x + gridDimensions.x * (neighbourCell.y + gridDimensions.y * neighbourCell.z);
 
-                        float neighbourDensity = fmaxf(nDensity, 1e-6f);
+                    uint32_t start = __ldg(&cellStart[cellId]);
+                    uint32_t end = __ldg(&cellEnd[cellId]);
 
-                        // Pressure force
-                        float gradientMagnitude = spikyCoefficient * difference * difference;
+                    if (start == UINT_MAX)
+                        continue;
 
-                        float3 gradient = make_float3(
-                            gradientMagnitude * displacement.x / distance,
-                            gradientMagnitude * displacement.y / distance,
-                            gradientMagnitude * displacement.z / distance
+                    for (uint32_t k = start; k < end; ++k) {
+                        if (i == k) continue;
+
+                        const ParticlesKernel::CudaParticle* nPtr = &particles[k];
+                        float3 nPos = make_float3(__ldg(&nPtr->position.x), __ldg(&nPtr->position.y), __ldg(&nPtr->position.z));
+                        float3 nVel = make_float3(__ldg(&nPtr->velocity.x), __ldg(&nPtr->velocity.y), __ldg(&nPtr->velocity.z));
+                        float nDensity = __ldg(&nPtr->density);
+                        float nPress = __ldg(&nPtr->pressure);
+
+                        float3 displacement = make_float3(
+                            position.x - nPos.x,
+                            position.y - nPos.y,
+                            position.z - nPos.z
                         );
 
-                        float averagePressure = 0.5f * (particle.pressure + nPress);
+                        float distanceSquared =
+                            displacement.x * displacement.x +
+                            displacement.y * displacement.y +
+                            displacement.z * displacement.z;
 
-                        float pressureScale = -particleMass * averagePressure / neighbourDensity;
+                        if (distanceSquared > 0.0f && distanceSquared < smoothingRadiusSquared) {
+                            float distance = sqrtf(distanceSquared);
+                            float difference = smoothingRadius - distance;
 
-                        pressureForce.x += pressureScale * gradient.x;
-                        pressureForce.y += pressureScale * gradient.y;
-                        pressureForce.z += pressureScale * gradient.z;
+                            float neighbourDensity = fmaxf(nDensity, 1e-6f);
 
-                        // Viscosity force
-                        float laplacian = viscosityKernelCoefficient * difference;
+                            // Pressure force
+                            float gradientMagnitude = spikyCoefficient * difference * difference;
 
-                        float3 relativeVelocity = make_float3(
-                            nVel.x - velocity.x,
-                            nVel.y - velocity.y,
-                            nVel.z - velocity.z
-                        );
+                            float3 gradient = make_float3(
+                                gradientMagnitude * displacement.x / distance,
+                                gradientMagnitude * displacement.y / distance,
+                                gradientMagnitude * displacement.z / distance
+                            );
 
-                        float viscosityScale = viscosityCoefficient * particleMass * particleMass * laplacian / neighbourDensity;
+                            float averagePressure = 0.5f * (particle.pressure + nPress);
 
-                        viscosityForce.x += relativeVelocity.x * viscosityScale;
-                        viscosityForce.y += relativeVelocity.y * viscosityScale;
-                        viscosityForce.z += relativeVelocity.z * viscosityScale;
+                            float pressureScale = -particleMass * averagePressure / neighbourDensity;
+
+                            pressureForce.x += pressureScale * gradient.x;
+                            pressureForce.y += pressureScale * gradient.y;
+                            pressureForce.z += pressureScale * gradient.z;
+
+                            // Viscosity force
+                            float laplacian = viscosityKernelCoefficient * difference;
+
+                            float3 relativeVelocity = make_float3(
+                                nVel.x - velocity.x,
+                                nVel.y - velocity.y,
+                                nVel.z - velocity.z
+                            );
+
+                            float viscosityScale = viscosityCoefficient * particleMass * particleMass * laplacian / neighbourDensity;
+
+                            viscosityForce.x += relativeVelocity.x * viscosityScale;
+                            viscosityForce.y += relativeVelocity.y * viscosityScale;
+                            viscosityForce.z += relativeVelocity.z * viscosityScale;
+                        }
                     }
                 }
             }
         }
+
+        particles[i].pressureForces = make_float4(
+            pressureForce.x,
+            pressureForce.y,
+            pressureForce.z,
+            0.0f
+        );
+
+        particles[i].viscosityForces = make_float4(
+            viscosityForce.x,
+            viscosityForce.y,
+            viscosityForce.z,
+            0.0f
+        );
+
+        localMaxVelocity = sqrtf(
+            velocity.x * velocity.x +
+            velocity.y * velocity.y +
+            velocity.z * velocity.z
+        );
+
+        const float inverseMass = 1.0f / particleMass;
+
+        const float ax = (pressureForce.x + viscosityForce.x) * inverseMass;
+        const float ay = (pressureForce.y + viscosityForce.y) * inverseMass + gravity;
+        const float az = (pressureForce.z + viscosityForce.z) * inverseMass;
+
+        localMaxAcceleration = sqrtf( ax * ax + ay * ay + az * az );
     }
 
-    particles[i].pressureForces = make_float4(
-        pressureForce.x,
-        pressureForce.y,
-        pressureForce.z,
-        0.0f
-    );
+    sharedMaxVelocity[ threadIdx.x ] = localMaxVelocity;
+    sharedMaxAcceleration[ threadIdx.x ] = localMaxAcceleration;
 
-    particles[i].viscosityForces = make_float4(
-        viscosityForce.x,
-        viscosityForce.y,
-        viscosityForce.z,
-        0.0f
-    );
+    __syncthreads();
+
+    for (unsigned int stride = blockDim.x / 2; stride > 0; stride = stride / 2){
+        if (threadIdx.x < stride) {
+            sharedMaxVelocity[ threadIdx.x ] = fmaxf( sharedMaxVelocity[threadIdx.x], sharedMaxVelocity[threadIdx.x + stride] );
+            sharedMaxAcceleration[threadIdx.x] = fmaxf( sharedMaxAcceleration[threadIdx.x], sharedMaxAcceleration[threadIdx.x + stride] );
+        }
+
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0){
+        partialStep[blockIdx.x].maxVelocity = sharedMaxVelocity[0];
+        partialStep[blockIdx.x].maxAcceleration = sharedMaxAcceleration[0];
+    }
 }
 
 //Note: Look up the formula, there are multiple ways of doing this
@@ -523,9 +582,6 @@ __global__ void __launch_bounds__(512, 2) calculatePressureAndViscosityForcesKer
 
 //NOTE: The process of this is again same as the process for density, pressure forces, viscosity
 //NOTE: Helper function, similar to others this is for reference, later we have to work on it - redundancy
-
-
-
 
 void ParticlesKernel::initializeBoundaryGrid()
 {
@@ -709,7 +765,8 @@ void ParticlesKernel::calculateDensityAndPressure() {
             simulationParams->boundaryGridOrigin,
             simulationParams->boundaryGridDimensions,
 
-            POLY6_COEFFICIENT
+            POLY6_COEFFICIENT,
+            timeStep->stepBuffer.stepBuffer
       );
 }
 
@@ -733,17 +790,19 @@ void ParticlesKernel::calculatePressureAndViscosityForces()
             simulationParams -> bounds.min,
             simulationParams -> cellSize,
             simulationParams -> gridDimensions,
-
+            simulationParams -> gravity,
             cellStart,
-            cellEnd
+            cellEnd,
+            timeStep->stepBuffer.partialStepBuffer,
+            timeStep->stepBuffer.stepBuffer
         );
 }
 
-void ParticlesKernel::initialize(CudaContext& _cudaContext, GPUSimulationParams &_simulationParams ) {
+void ParticlesKernel::initialize(CudaContext& _cudaContext, GPUSimulationParams &_simulationParams, TimeStep &_timeStep ) {
     cudaContext = &_cudaContext;
     simulationParams = &_simulationParams;
+    timeStep = &_timeStep;
 
-    THREADS_PER_BLOCK = 256;
     BLOCKS_COUNT = (simulationParams->particlesCount + THREADS_PER_BLOCK - 1 ) / THREADS_PER_BLOCK;
     BOUNDARY_BLOCKS_COUNT = (simulationParams->boundaryParticlesCount + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
@@ -832,8 +891,10 @@ void ParticlesKernel::launchReorder()
             );
 }
 
-void ParticlesKernel::updateParticles(float deltaTime)
+void ParticlesKernel::updateParticles()
 {
+    timeStep -> calculateAdaptiveTimeStep();
+
     updateKernel << <
         BLOCKS_COUNT,
         THREADS_PER_BLOCK,
@@ -842,12 +903,12 @@ void ParticlesKernel::updateParticles(float deltaTime)
         >> > (
             particleBufferB,
             simulationParams->particlesCount,
-            deltaTime,
             simulationParams->gravity,
             simulationParams->mass,
             simulationParams->bounds.min,
             simulationParams->bounds.max,
             simulationParams->particleRadius,
-            simulationParams->restitution
+            simulationParams->restitution,
+            timeStep->stepBuffer.stepBuffer
         );
 }

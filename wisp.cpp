@@ -57,17 +57,17 @@ class Wisp {
 		glm::mat4 projection = glm::mat4(1.0f);
 	} uniformData;
 
+	struct Camera {
+		glm::vec3 position{ 10.0f, 10.0f, 10.0f };
+		glm::vec3 cameraUp{ 0, 1, 0 };
+		glm::vec3 lookAt{ 0.0f, -0.0f, 0.0f };
+	} camera;
+
 	//struct Camera {
 	//	glm::vec3 position{ 6.0f, 6.0f, 6.0f };
 	//	glm::vec3 cameraUp{ 0, 1, 0 };
 	//	glm::vec3 lookAt{ 0.0f, -0.0f, 0.0f };
 	//} camera;
-
-	struct Camera {
-		glm::vec3 position{ 6.0f, 6.0f, 6.0f };
-		glm::vec3 cameraUp{ 0, 1, 0 };
-		glm::vec3 lookAt{ 0.0f, -0.0f, 0.0f };
-	} camera;
 
 	//struct Camera {
 	//	glm::vec3 position{ 3.0f, -2.0f, 3.0f };
@@ -401,7 +401,7 @@ class Wisp {
 			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 			uniformData.projection = glm::perspective(glm::radians(45.0f), (float) engine.windowManager.windowSize.x / (float)engine.windowManager.windowSize.y, 0.1f, 200.0f);
-			uniformData.projection[1][1] *= -1;
+			//uniformData.projection[1][1] *= -1;
 			uniformData.view = glm::lookAt(camera.position, camera.lookAt, camera.cameraUp);
 
 			engine.resourceManager.copyDataIntoBuffer(UBHandle.allocationInfo.pMappedData, &uniformData, UBHandle.size);
@@ -503,7 +503,12 @@ class Wisp {
 				engine.getCurrentFrame().frameFence
 			);
 
-			cudaInterface.simulate();
+			constexpr unsigned int MAX_SUBSTEPS = 1;
+
+			cudaInterface.timeStep.addFrameTimeToAccumulator(deltaTime);
+			for (unsigned int step = 0; step < MAX_SUBSTEPS; ++step){
+				cudaInterface.simulate();
+			}
 
 			engine.vulkanContext.currentFrame = (engine.vulkanContext.currentFrame + 1) % engine.vulkanContext.MAX_FRAMES_IN_FLIGHT;
 

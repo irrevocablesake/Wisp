@@ -3,8 +3,6 @@
 #include "CPUSimulationParams.h"
 #include <cuda_runtime.h>
 
-constexpr int THREADS_PER_BLOCK = 256;
-
 struct GPUSimulationParams {
 	float gravity;
 

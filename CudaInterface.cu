@@ -4,8 +4,9 @@ void CudaInterface::initialize(const std::array< uint8_t, 16 >& deviceUUID, cons
 	cudaContext.initialize(deviceUUID);
 
 	simulationParams = toCudaParams(_simulationParams);
+    timeStep.initialize( simulationParams, cudaContext.stream );
+	particlesKernel.initialize( cudaContext, simulationParams, timeStep );
 
-	particlesKernel.initialize( cudaContext, simulationParams );
 }
 
 cudaExternalSemaphore_t CudaInterface::importSemaphore(HANDLE vkToCudaHandle) {
@@ -20,12 +21,9 @@ void CudaInterface::simulate(){
     particlesKernel.buildCellRanges();
     particlesKernel.calculateDensityAndPressure();
     particlesKernel.calculatePressureAndViscosityForces();
-    particlesKernel.updateParticles(0.005f);
+    particlesKernel.updateParticles();
     
-    std::swap(
-        particlesKernel.particleBufferA,
-        particlesKernel.particleBufferB
-    );
+    std::swap( particlesKernel.particleBufferA, particlesKernel.particleBufferB );
 
     particlesKernel.currentBufferIndex ^= 1;
 

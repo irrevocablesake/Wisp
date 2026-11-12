@@ -2,6 +2,11 @@
 
 #include<glm/glm.hpp>
 
+//will be useful to scale particles count
+constexpr int THREADS_PER_BLOCK = 256;
+
+//NOTE: Do not do particlesCount as 0
+
 //Note: Ensure cellsize >= Smoothing Radius
 struct CPUSimulationParams {
 
@@ -30,8 +35,9 @@ struct CPUSimulationParams {
 	 //int particlesCount = 102400;
 	//int particlesCount = 204800;
 	//int particlesCount = 409600;
-	int particlesCount = 1024000;
-	//int particlesCount = 2048000;
+	//int particlesCount = 1024000;
+	int particlesCount = 2048000;
+	//int particlesCount = 10240000;
 
 	float gasConstant = 0.006f;
 
