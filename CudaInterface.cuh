@@ -2,7 +2,6 @@
 
 #include "CudaContext.cuh"
 #include "ParticlesKernel.cuh"
-#include "AdaptiveTimeStep.cuh"
 #include "GPUSimulationParams.h"
 #include "CPUSimulationParams.h"
 
@@ -10,7 +9,6 @@ class CudaInterface {
 	public:
 		CudaContext cudaContext;
 		ParticlesKernel particlesKernel;
-		TimeStep timeStep;
 		
 		using CudaBuffer = CudaContext::CudaBuffer;
 		GPUSimulationParams simulationParams;
