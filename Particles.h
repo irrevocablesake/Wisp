@@ -216,7 +216,7 @@ class Particles {
 
 						p.position = glm::vec4(position, 0.0f);
 
-						p.velocity = glm::vec4(2.0f * position.y, 0.0, 0.0, 0.0);
+						p.velocity = glm::vec4(0.0f);
 						p.density = 0.0f;
 						p.pressure = 0.0f;
 						p.pressureForces = float4(0.0f);
