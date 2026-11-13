@@ -25,7 +25,8 @@ struct CPUSimulationParams {
 
 	//int particlesCount = 40960;
 	//int particlesCount = 131072;
-	 int particlesCount = 102400;
+	 //int particlesCount = 102400;
+	int particlesCount = 153600;
 	//int particlesCount = 204800;
 	//int particlesCount = 409600;
 	//int particlesCount = 1024000;
@@ -38,9 +39,21 @@ struct CPUSimulationParams {
 	uint32_t boundaryParticlesCount = 0;
 	float boundaryParticleMass = 0.512;
 
+	//struct SimulationBounds {
+	//	glm::vec3 min = glm::vec3(-6.0f, -2.0f, -3.0f);
+	//	glm::vec3 max = glm::vec3(6.0f, 2.0f, 3.0f);
+	//	glm::vec3 dimensions = max - min;
+	//} bounds;
+
+	//struct SimulationBounds {
+	//	glm::vec3 min = glm::vec3(-5.4f, -1.8f, -2.7f);
+	//	glm::vec3 max = glm::vec3(5.4f, 1.8f, 2.7f);
+	//	glm::vec3 dimensions = max - min;
+	//} bounds;
+
 	struct SimulationBounds {
-		glm::vec3 min = glm::vec3(-6.0f, -2.0f, -3.0f);
-		glm::vec3 max = glm::vec3(6.0f, 2.0f, 3.0f);
+		glm::vec3 min = glm::vec3(-6.93f, -2.31f, -3.465f);
+		glm::vec3 max = glm::vec3(6.93f, 2.31f, 3.465f);
 		glm::vec3 dimensions = max - min;
 	} bounds;
 
