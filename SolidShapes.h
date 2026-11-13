@@ -84,4 +84,69 @@ public:
 
         return geometry;
 	}
+    Geometry generateWireframe(glm::vec3 min, glm::vec3 max) {
+        Geometry geometry;
+
+        const glm::vec3& mn = min;
+        const glm::vec3& mx = max;
+
+        // 8 corners of the bounding box
+        geometry.vertices = {
+            { {mn.x, mn.y, mn.z}, glm::vec3(0.0f) }, // 0
+            { {mx.x, mn.y, mn.z}, glm::vec3(0.0f) }, // 1
+            { {mx.x, mx.y, mn.z}, glm::vec3(0.0f) }, // 2
+            { {mn.x, mx.y, mn.z}, glm::vec3(0.0f) }, // 3
+            { {mn.x, mn.y, mx.z}, glm::vec3(0.0f) }, // 4
+            { {mx.x, mn.y, mx.z}, glm::vec3(0.0f) }, // 5
+            { {mx.x, mx.y, mx.z}, glm::vec3(0.0f) }, // 6
+            { {mn.x, mx.y, mx.z}, glm::vec3(0.0f) }  // 7
+        };
+
+        // 12 edges, each represented by 2 indices
+        geometry.indices = {
+            // Bottom face
+            0, 1,
+            1, 2,
+            2, 3,
+            3, 0,
+
+            // Top face
+            4, 5,
+            5, 6,
+            6, 7,
+            7, 4,
+
+            // Vertical edges
+            0, 4,
+            1, 5,
+            2, 6,
+            3, 7
+        };
+
+        geometry.VHandle.size = geometry.vertices.size() * sizeof(Vertex);
+        resourceManager->setupBuffer(
+            geometry.VHandle,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            false, false, true
+        );
+        resourceManager->uploadData(
+            geometry.VHandle,
+            geometry.vertices.data(),
+            geometry.VHandle.size
+        );
+
+        geometry.IHandle.size = geometry.indices.size() * sizeof(uint32_t);
+        resourceManager->setupBuffer(
+            geometry.IHandle,
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            false, false, true
+        );
+        resourceManager->uploadData(
+            geometry.IHandle,
+            geometry.indices.data(),
+            geometry.IHandle.size
+        );
+
+        return geometry;
+    }
 };

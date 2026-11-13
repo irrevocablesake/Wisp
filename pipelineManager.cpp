@@ -14,7 +14,7 @@ void PipelineManager::createComputePipeline(VkPipeline& pipeline, VkPipelineShad
 	vkCreateComputePipelines(vulkanContext->logicalDeviceIF.handle, nullptr, 1, &pipelineCI, nullptr, &pipeline);
 }
 
-void PipelineManager::createGraphicsPipeline(VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, const std::vector<VkDescriptorSetLayout>& layout, VkFormat format, std::vector< VkPipelineShaderStageCreateInfo >& shaderStages, VkPipelineVertexInputStateCreateInfo& vertexInputState, uint32_t pushConstantSize, bool isDepth, bool depthTestEnable ) {
+void PipelineManager::createGraphicsPipeline(VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, const std::vector<VkDescriptorSetLayout>& layout, VkFormat format, std::vector< VkPipelineShaderStageCreateInfo >& shaderStages, VkPipelineVertexInputStateCreateInfo& vertexInputState, uint32_t pushConstantSize, VkPrimitiveTopology topology, bool isDepth, bool depthTestEnable ) {
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
 	if (pushConstantSize == 0) {
 		pipelineLayoutCreateInfo = {
@@ -42,7 +42,7 @@ void PipelineManager::createGraphicsPipeline(VkPipeline& pipeline, VkPipelineLay
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyState{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+		.topology = topology
 	};
 
 	std::vector< VkDynamicState > dynamicStates{
@@ -91,7 +91,7 @@ void PipelineManager::createGraphicsPipeline(VkPipeline& pipeline, VkPipelineLay
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
 		.cullMode = VK_CULL_MODE_BACK_BIT,
 		.frontFace = VK_FRONT_FACE_CLOCKWISE,
-		.lineWidth = 1.0f
+		.lineWidth = 2.0f
 	};
 
 	VkPipelineMultisampleStateCreateInfo multisampleState{

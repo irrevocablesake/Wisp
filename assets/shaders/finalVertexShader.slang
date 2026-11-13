@@ -16,9 +16,9 @@ VSOutput main(uint vertexID : SV_VertexID)
     };
 
     float2 uvs[3] = {
-        float2(0.0, 1.0),
-        float2(2.0, 1.0),
-        float2(0.0, -1.0)
+        float2(0.0, 0.0),
+        float2(2.0, 0.0),
+        float2(0.0, 2.0)
     };
 
     output.position = float4(positions[vertexID], 0.0, 1.0);

@@ -41,8 +41,8 @@ struct CPUSimulationParams {
 	float boundaryParticleMass  = restDensity * boundarySpacing * boundarySpacing * boundarySpacing;
 
 	struct SimulationBounds {
-		glm::vec3 min = glm::vec3(-4.0f);
-		glm::vec3 max = glm::vec3(4.0f);
+		glm::vec3 min = glm::vec3(-6.0f, -2.0f, -3.0f);
+		glm::vec3 max = glm::vec3(6.0f, 2.0f, 3.0f);
 		glm::vec3 dimensions = max - min;
 	} bounds;
 

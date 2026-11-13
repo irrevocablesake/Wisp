@@ -46,6 +46,9 @@ class Wisp {
 	VkPipeline FinalPipeline;
 	VkPipelineLayout FinalPipelineLayout;
 
+	VkPipeline WirePipeline;
+	VkPipelineLayout WirePipelineLayout;
+
 	//Particles
 	Particles particles;
 
@@ -55,6 +58,8 @@ class Wisp {
 		glm::mat4 model = glm::mat4(1.0f);
 		glm::mat4 view = glm::mat4(1.0f);
 		glm::mat4 projection = glm::mat4(1.0f);
+		glm::mat4 inverseProjection = glm::mat4(1.0f);
+		glm::vec2 screenSize;
 	} uniformData;
 
 	//struct Camera {
@@ -64,9 +69,9 @@ class Wisp {
 	//} camera;
 
 	struct Camera {
-		glm::vec3 position{ 6.0f, 6.0f, 6.0f };
+		glm::vec3 position{ 15.0f, 12.0f, 12.0f };
 		glm::vec3 cameraUp{ 0, 1, 0 };
-		glm::vec3 lookAt{ 0.0f, -0.0f, 0.0f };
+		glm::vec3 lookAt{ 0.0f, 0.0f, 0.0f };
 	} camera;
 
 	//struct Camera {
@@ -107,6 +112,39 @@ class Wisp {
 
 		engine.resourceManager.updateDescriptorSet(bufferUpdate);
 		engine.resourceManager.copyDataIntoBuffer(UBHandle.allocationInfo.pMappedData, &uniformData, UBHandle.size);
+	}
+
+	void generateWirePipeline() {
+
+		VkPipelineShaderStageCreateInfo vertexShaderStage{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.stage = VK_SHADER_STAGE_VERTEX_BIT,
+			.module = engine.compileShader("wireVertexModule", "assets/shaders/wireVertexShader.slang"),
+			.pName = "main"
+		};
+
+		VkPipelineShaderStageCreateInfo fragmentShaderStage{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+			.module = engine.compileShader("wireFragmentModule", "assets/shaders/wireFragmentShader.slang"),
+			.pName = "main"
+		};
+		
+		std::vector< VkPipelineShaderStageCreateInfo > shaderStages = { vertexShaderStage, fragmentShaderStage };
+		std::vector< VkDescriptorSetLayout > layouts = { UBDescriptorSetLayout };
+
+		VkVertexInputBindingDescription binding{ .binding = 0, .stride = sizeof(Engine::Vertex), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX };
+		std::vector<VkVertexInputAttributeDescription> attributes = {
+			{.location = 0, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Engine::Vertex, position) },
+			{.location = 1, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Engine::Vertex, normal) }
+		};
+		VkPipelineVertexInputStateCreateInfo vertexInputInfo{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+			.vertexBindingDescriptionCount = 1, .pVertexBindingDescriptions = &binding,
+			.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size()), .pVertexAttributeDescriptions = attributes.data()
+		};
+		
+		engine.pipelineManager.createGraphicsPipeline(WirePipeline, WirePipelineLayout, layouts, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, vertexInputInfo, 0, VK_PRIMITIVE_TOPOLOGY_LINE_LIST, false, true);
 	}
 
 	void setupFluidDepthTexture() {
@@ -194,7 +232,7 @@ class Wisp {
 			.pVertexAttributeDescriptions = attributes.data()
 		};
 
-		engine.pipelineManager.createGraphicsPipeline(GraphicsPipeline, GraphicsPipelineLayout, layouts, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, vertexInputInfo, 0, false, true );
+		engine.pipelineManager.createGraphicsPipeline(GraphicsPipeline, GraphicsPipelineLayout, layouts, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, vertexInputInfo, 0, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, false, true );
 	}
 
 	//NOTE: NEED TO WORK ON THE SHADER MODULE NAMES + FILE NAMES
@@ -240,7 +278,7 @@ class Wisp {
 			.pVertexAttributeDescriptions = attributes.data()
 		};
 
-		engine.pipelineManager.createGraphicsPipeline(DepthPipeline, DepthPipelineLayout, layouts, VK_FORMAT_UNDEFINED, shaderStages, vertexInputInfo, 0, true, true);
+		engine.pipelineManager.createGraphicsPipeline(DepthPipeline, DepthPipelineLayout, layouts, VK_FORMAT_UNDEFINED, shaderStages, vertexInputInfo, 0, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, true, true);
 	}
 
 	void generateFinalPipeline() {
@@ -271,7 +309,7 @@ class Wisp {
 			.pVertexAttributeDescriptions = nullptr
 		};
 
-		engine.pipelineManager.createGraphicsPipeline(FinalPipeline, FinalPipelineLayout, layouts, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, vertexInputInfo, 0, false, false);
+		engine.pipelineManager.createGraphicsPipeline(FinalPipeline, FinalPipelineLayout, layouts, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, vertexInputInfo, 0, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, false, false);
 	}
 
 	void generateParticles() {
@@ -329,6 +367,7 @@ class Wisp {
 		generatePipeline();
 		generateDepthPipeline();
 		generateFinalPipeline();
+		generateWirePipeline();
 
 		vkToCuda = engine.vulkanContext.createExportableSemaphore();
 		cudaToVk = engine.vulkanContext.createExportableSemaphore();
@@ -400,9 +439,11 @@ class Wisp {
 			};
 			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-			uniformData.projection = glm::perspective(glm::radians(45.0f), (float) engine.windowManager.windowSize.x / (float)engine.windowManager.windowSize.y, 0.1f, 200.0f);
-			uniformData.projection[1][1] *= -1;
+			uniformData.projection = glm::perspective(glm::radians(45.0f), (float)engine.windowManager.windowSize.x / (float)engine.windowManager.windowSize.y, 0.1f, 200.0f);
+			uniformData.projection[1][1] *= -1.0f;
+			uniformData.inverseProjection = glm::inverse(uniformData.projection);
 			uniformData.view = glm::lookAt(camera.position, camera.lookAt, camera.cameraUp);
+			uniformData.screenSize = glm::vec2(engine.windowManager.windowSize.x, engine.windowManager.windowSize.y);
 
 			engine.resourceManager.copyDataIntoBuffer(UBHandle.allocationInfo.pMappedData, &uniformData, UBHandle.size);
 
@@ -447,9 +488,15 @@ class Wisp {
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, FinalPipeline);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, FinalPipelineLayout, 0, 1, &FDTextureDescriptorSet, 0, nullptr);
 			vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WirePipeline);
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &particles.wireGeometry.VHandle.buffer, &offset1);
+			vkCmdBindIndexBuffer(commandBuffer, particles.wireGeometry.IHandle.buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WirePipelineLayout, 0, 1, &UBDescriptorSet, 0, nullptr);
+			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(particles.wireGeometry.indices.size()), 1, 0, 0, 0);
+
 			vkCmdEndRendering(commandBuffer);
 			engine.barrier.transitionImageFromColorAttachmentToPresent(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
-
 
 			//VkDeviceSize offset = 0;
 			//engine.barrier.transitionImageFromUndefinedToColorAttachment(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);

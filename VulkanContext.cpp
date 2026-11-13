@@ -169,6 +169,9 @@ void VulkanContext::setupLogicalDevice() {
 		.dynamicRendering = true
 	};
 
+	VkPhysicalDeviceFeatures enabledFeatures{};
+	enabledFeatures.wideLines = VK_TRUE;
+
 	VkDeviceCreateInfo deviceCI{
 		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
 		.pNext = &enabledVk13Features,
@@ -176,6 +179,7 @@ void VulkanContext::setupLogicalDevice() {
 		.pQueueCreateInfos = &queueCI,
 		.enabledExtensionCount = static_cast<uint32_t>(extensionsIF.deviceIF.extensions.size()),
 		.ppEnabledExtensionNames = extensionsIF.deviceIF.extensions.data(),
+		.pEnabledFeatures = &enabledFeatures,
 	};
 
 	vkCreateDevice( physicalDeviceIF.handle, &deviceCI, nullptr, &logicalDeviceIF.handle);

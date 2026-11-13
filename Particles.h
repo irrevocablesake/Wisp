@@ -14,6 +14,7 @@ class Particles {
 	public:
 
 		Engine::Geometry particleGeometry;
+		Engine::Geometry wireGeometry;
 
 		struct Particle {
 			glm::vec4 position{};
@@ -81,6 +82,10 @@ class Particles {
 			} };
 
 			engine->resourceManager.updateDescriptorSet(bufferUpdate);
+		}
+
+		void generateWireframe() {
+			wireGeometry = engine->solidShapes.generateWireframe(simulationParams->bounds.min, simulationParams->bounds.max);
 		}
 
 		void generateBoundaryParticles() {
@@ -241,6 +246,7 @@ class Particles {
 
 			generate();
 			generateBoundaryParticles();
+			generateWireframe();
 		}
 
 		int count() {
