@@ -89,7 +89,7 @@ class Wisp {
 			.binding = 0,
 			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 			.descriptorCount = 1,
-			.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+			.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
 		};
 
 		UBDescriptorSetLayout = engine.resourceManager.createDescriptorSetLayout({ binding });
@@ -299,7 +299,7 @@ class Wisp {
 
 		std::vector< VkPipelineShaderStageCreateInfo > shaderStages = { vertexShaderStage, fragmentShaderStage };
 
-		std::vector< VkDescriptorSetLayout > layouts = { FDTextureDescriptorSetLayout };
+		std::vector< VkDescriptorSetLayout > layouts = { FDTextureDescriptorSetLayout, UBDescriptorSetLayout };
 
 		VkPipelineVertexInputStateCreateInfo vertexInputInfo{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -487,6 +487,16 @@ class Wisp {
 			vkCmdBeginRendering(commandBuffer, &renderingAttachment.renderingInfo);
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, FinalPipeline);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, FinalPipelineLayout, 0, 1, &FDTextureDescriptorSet, 0, nullptr);
+			vkCmdBindDescriptorSets(
+				commandBuffer,
+				VK_PIPELINE_BIND_POINT_GRAPHICS,
+				FinalPipelineLayout,
+				1,
+				1,
+				&UBDescriptorSet,
+				0,
+				nullptr
+			);
 			vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WirePipeline);
