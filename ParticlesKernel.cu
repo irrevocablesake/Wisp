@@ -322,6 +322,36 @@ __global__ void updateKernel(
     particle.velocity.y += xsph[index].y;
     particle.velocity.z += xsph[index].z;
 
+    /*
+        - Look at particle position, find direction from vortex center
+        - Find distance between the two
+        - Ensure particle isn't at center of vortex
+        - Apply inverse of the distance for acceleration
+    */
+    const float vortexStrength = 1.2f;
+    const float3 vortexCenter = make_float3(0.0f, 0.0f, 0.0f);
+
+    float3 radialDirection = make_float3(
+        particle.position.x - vortexCenter.x,
+        0.0f,
+        particle.position.z - vortexCenter.z
+    );
+
+    float radialDistanceSquared = radialDirection.x * radialDirection.x + radialDirection.z * radialDirection.z;
+
+    if (radialDistanceSquared > 1e-6f){
+        float inverseDistance = rsqrtf(radialDistanceSquared);
+
+        float3 tangentialDirection = make_float3(
+            radialDirection.z * inverseDistance,
+            0.0f,
+            -radialDirection.x * inverseDistance
+        );
+
+        particle.velocity.x += tangentialDirection.x * vortexStrength * deltaTime;
+        particle.velocity.z += tangentialDirection.z * vortexStrength * deltaTime;
+    }
+
     particle.position.x += particle.velocity.x * deltaTime;
     particle.position.y += particle.velocity.y * deltaTime;
     particle.position.z += particle.velocity.z * deltaTime;
