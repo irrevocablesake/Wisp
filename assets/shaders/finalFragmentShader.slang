@@ -157,17 +157,28 @@ float3 background(float3 ro, float3 rd) {
 }
 
 [shader("fragment")]
-float4 main(VSOutput input) : SV_Target {
+float4 main(VSOutput input) : SV_Target
+{
     float3x3 Rt = transpose((float3x3)uniformData.view);
     float3 camPos = -mul(Rt, uniformData.view[3].xyz);
 
     float depth = depthTexture.Sample(input.uv);
 
-    if (depth >= BG_THRESHHOLD)
-    {
+    if (depth >= BG_THRESHHOLD) {
         float3 rd = getWorldViewDirection(input.uv, Rt);
         return float4(background(camPos, rd), 1.0);
     }
 
-    return float4(0.0, 0.0, 0.0, 1.0);
+    float3 P = getFilteredViewPosition(input.uv);
+    float3 Nv = reconstructNormal(input.uv);
+
+    float3 worldPos = mul(Rt, P) + camPos;
+
+    float3 N = normalize(mul(Rt, Nv));
+
+    float3 I = normalize(worldPos - camPos);
+    float3 V = -I;
+
+    
+    return float4(V * 0.5 + 0.5, 1.0);
 }
