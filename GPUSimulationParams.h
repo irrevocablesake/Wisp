@@ -17,9 +17,7 @@ struct GPUSimulationParams {
 	float smoothingRadius;
 	float mass;
 
-	float speedOfSound;
 	float cflCoefficient;
-	float accelerationCoefficient;
 	float maxDeltaTime;
 
 	float viscosityCoefficient;
@@ -65,9 +63,7 @@ inline GPUSimulationParams toCudaParams(
 	result.boundaryGridOrigin = make_float3(source.boundaryGridOrigin.x, source.boundaryGridOrigin.y, source.boundaryGridOrigin.z);
 	result.boundaryGridDimensions = make_uint3(source.boundaryGridDimensions.x, source.boundaryGridDimensions.y, source.boundaryGridDimensions.z);
 
-	result.speedOfSound = source.speedOfSound;
 	result.cflCoefficient = source.cflCoefficient;
-	result.accelerationCoefficient = source.accelerationCoefficient;
 	result.maxDeltaTime = source.maxDeltaTime;
 
 	return result;

@@ -5,40 +5,38 @@
 //Note: Ensure cellsize >= Smoothing Radius
 struct CPUSimulationParams {
 
-	float latticeSpacing = 0.04f;
-	float boundarySpacing = 0.04f;
-	float latticeJitter = 0.04f;
+	float latticeSpacing = 0.08f;
+	float boundarySpacing = 0.08f;
+	float latticeJitter = 0.01f;
 	
 	float gravity = -9.81f;
-
 	int boundaryLayers = 3;
 
-	float particleRadius = 0.06f;
+	float particleRadius = 0.12f;
 	float restitution = 0.8f;
-	float smoothingRadius = 0.08f;
-	float mass = 1.0f;
+	float smoothingRadius = 0.16f;
+	float mass = 0.512f;
 	float viscosityCoefficient = 0.01f;
 	float restDensity = 1000.0f;
 
-	float speedOfSound = 0.7746f;
 	float cflCoefficient = 0.4f;
 	float accelerationCoefficient = 0.2f;
-	float maxDeltaTime = 0.04f;
+	float maxDeltaTime = 0.001f;
 
 	//int particlesCount = 40960;
 	//int particlesCount = 131072;
-	 //int particlesCount = 102400;
-	int particlesCount = 204800;
+	 int particlesCount = 102400;
+	//int particlesCount = 204800;
 	//int particlesCount = 409600;
 	//int particlesCount = 1024000;
 	//int particlesCount = 2048000;
 
-	float gasConstant = 0.006f;
+	float gasConstant = 1600.0f;
 
-	float cellSize = 0.08f;
+	float cellSize = 0.16f;
 
 	uint32_t boundaryParticlesCount = 0;
-	float boundaryParticleMass  = restDensity * boundarySpacing * boundarySpacing * boundarySpacing;
+	float boundaryParticleMass = 0.512;
 
 	struct SimulationBounds {
 		glm::vec3 min = glm::vec3(-6.0f, -2.0f, -3.0f);
