@@ -11,14 +11,14 @@ void CudaInterface::initialize(const std::array< uint8_t, 16 >& deviceUUID, cons
 cudaExternalSemaphore_t CudaInterface::importSemaphore(HANDLE vkToCudaHandle) {
 	return cudaContext.importSemaphores(vkToCudaHandle );
 }
-void CudaInterface::simulate(float vortexTime, float vortexDuration ){
+void CudaInterface::simulate(float vortexStrength ){
     cudaWaitingForVulkan();
 
     const float speedOfSound = sqrtf(simulationParams.gasConstant);
     float value = simulationParams.cflCoefficient * simulationParams.smoothingRadius / speedOfSound;
     const float dt = fminf( value, simulationParams.maxDeltaTime );
 
-    constexpr int SUBSTEPS = 8;
+    constexpr int SUBSTEPS = 7;
     for (int s = 0; s < SUBSTEPS; ++s) {
         particlesKernel.generateIDs();
         particlesKernel.sortIDs();
@@ -26,7 +26,7 @@ void CudaInterface::simulate(float vortexTime, float vortexDuration ){
         particlesKernel.buildCellRanges();
         particlesKernel.calculateDensityAndPressure();
         particlesKernel.calculatePressureAndViscosityForces();
-        particlesKernel.updateParticles(dt, vortexTime, vortexDuration );
+        particlesKernel.updateParticles(dt, vortexStrength );
 
         std::swap(
             particlesKernel.particleBufferA,

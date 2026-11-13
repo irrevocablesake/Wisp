@@ -76,7 +76,7 @@ class ParticlesKernel {
 
 		void initialize( CudaContext& _cudaContext, GPUSimulationParams& _simulationParams );
 
-		void updateParticles( float deltaTime, float vortexTime, float vortexDuration);
+		void updateParticles( float deltaTime, float vortexStrength );
 		void generateIDs();
 		void sortIDs();
 		void buildCellRanges();

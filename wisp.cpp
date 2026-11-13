@@ -2,6 +2,7 @@
 #include "Particles.h"
 #include "engine.h"
 
+#include "imgui_compile.h"
 #include "CPUSimulationParams.h"
 
 #include<glm/gtc/matrix_transform.hpp>
@@ -14,6 +15,14 @@ class Wisp {
 
 	//Engine Initialization
 	Engine engine;
+
+	//SHOULD REWORK THIS REFACTOR
+	ImFont* boldFont;
+
+	float vortexStrength;
+	float vortexDirection;
+
+	VkDescriptorPool imguiPool;
 
 	//SEMAPHORE
 	VkSemaphore cudaToVk;
@@ -74,7 +83,7 @@ class Wisp {
 	//} camera;
 
 	struct Camera {
-		glm::vec3 position{ 15.0f, 12.0f, 12.0f };
+		glm::vec3 position{ 13.5f, 10.8f, 11.8f };
 		glm::vec3 cameraUp{ 0, 1, 0 };
 		glm::vec3 lookAt{ 0.0f, 0.0f, 0.0f };
 	} camera;
@@ -240,6 +249,60 @@ class Wisp {
 		engine.pipelineManager.createGraphicsPipeline(GraphicsPipeline, GraphicsPipelineLayout, layouts, VK_FORMAT_B8G8R8A8_SRGB, shaderStages, vertexInputInfo, 0, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, false, true );
 	}
 
+	//PICKED FROM FOLIAGE LAB
+	void setupUI() {
+
+		VkDescriptorPoolSize pool_sizes[] = {
+			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE },
+			{ VK_DESCRIPTOR_TYPE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_SAMPLER_POOL_SIZE },
+		};
+
+		VkDescriptorPoolCreateInfo pool_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+			.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+			.maxSets = 1000,
+			.poolSizeCount = (uint32_t)std::size(pool_sizes),
+			.pPoolSizes = pool_sizes
+		};
+
+
+		vkCreateDescriptorPool(engine.windowManager.vulkanContext->logicalDeviceIF.handle, &pool_info, nullptr, &imguiPool);
+
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+		ImGuiIO& io = ImGui::GetIO();
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+		boldFont = io.Fonts->AddFontFromFileTTF(
+			"assets/font.ttf",
+			24.0f
+		);
+
+		ImGui_ImplSDL3_InitForVulkan( engine.windowManager.window);
+		ImGui_ImplVulkan_InitInfo init_info = {};
+		init_info.ApiVersion = VK_API_VERSION_1_4;
+		init_info.Instance = engine.vulkanContext.instanceIF.handle;
+		init_info.PhysicalDevice = engine.vulkanContext.physicalDeviceIF.handle;
+		init_info.Device = engine.vulkanContext.logicalDeviceIF.handle;
+		init_info.QueueFamily = engine.vulkanContext.queueIF.family;
+		init_info.Queue = engine.vulkanContext.queueIF.handle;
+		init_info.PipelineCache = VK_NULL_HANDLE;
+		init_info.DescriptorPool = imguiPool;
+		init_info.MinImageCount = engine.windowManager.surfaceCapabilites.minImageCount;
+		init_info.ImageCount = engine.swapchainManager.imageCount;
+		init_info.Allocator = nullptr;
+		init_info.UseDynamicRendering = true;
+		init_info.PipelineInfoMain.PipelineRenderingCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+			.colorAttachmentCount = 1,
+			.pColorAttachmentFormats = &engine.swapchainManager.swapchainCI.imageFormat,
+			.depthAttachmentFormat = FDTextureHandle.imageFormat
+		};
+		init_info.CheckVkResultFn = nullptr;
+
+		ImGui_ImplVulkan_Init(&init_info);
+	}
+
 	//NOTE: NEED TO WORK ON THE SHADER MODULE NAMES + FILE NAMES
 	void generateDepthPipeline() {
 		//DEPTH PIPELINE
@@ -386,6 +449,212 @@ class Wisp {
 		cudaInterface.initialize(engine.vulkanContext.physicalDeviceIF.uuid, simulationParams);
 
 		cudaInterface.signalCudaFinished();
+
+		setupUI();
+	}
+
+	void drawOverlay() {
+		ImGui_ImplVulkan_NewFrame();
+		ImGui_ImplSDL3_NewFrame();
+		ImGui::NewFrame();
+
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+
+		const float TITLE_FONT_SIZE = 30.0f;
+		const float SUB_TITLE_FONT_SIZE = 24.0f;
+		const float LABEL_FONT_SIZE = 21.0f;
+		const float VALUE_FONT_SIZE = 20.0f;
+
+		// Panel dimensions
+		const float PANEL_RIGHT = 380.0f;
+		const float CONTENT_RIGHT = 360.0f;
+
+		// Panel
+		drawList->AddRectFilled(
+			ImVec2(10, 10),
+			ImVec2(PANEL_RIGHT, 610),
+			IM_COL32(20, 25, 35, 255),
+			8.0f
+		);
+
+		// Helper for right-aligned values
+		auto drawRightAlignedText = [&](float y, const char* text)
+			{
+				float textWidth = boldFont->CalcTextSizeA(
+					VALUE_FONT_SIZE, FLT_MAX, 0.0f, text
+				).x;
+
+				drawList->AddText(
+					boldFont,
+					VALUE_FONT_SIZE,
+					ImVec2(CONTENT_RIGHT - textWidth, y),
+					IM_COL32(255, 255, 255, 255),
+					text
+				);
+			};
+
+		// Title
+		drawList->AddText(
+			boldFont, TITLE_FONT_SIZE,
+			ImVec2(30, 25),
+			IM_COL32(255, 255, 255, 255),
+			"Wisp"
+		);
+
+		// Section heading
+		drawList->AddText(
+			boldFont, SUB_TITLE_FONT_SIZE,
+			ImVec2(30, 75),
+			IM_COL32(125, 211, 252, 255),
+			"SIMULATION STATISTICS"
+		);
+
+		// Separator
+		drawList->AddLine(
+			ImVec2(30, 112),
+			ImVec2(CONTENT_RIGHT, 112),
+			IM_COL32(55, 65, 80, 255),
+			2.0f
+		);
+
+		// Particle Count
+		drawList->AddText(
+			boldFont, LABEL_FONT_SIZE,
+			ImVec2(30, 132),
+			IM_COL32(160, 170, 185, 255),
+			"Particle Count"
+		);
+
+		std::string particleCountText =
+			std::to_string(simulationParams.particlesCount);
+
+		drawRightAlignedText(132, particleCountText.c_str());
+
+		// FPS
+		drawList->AddText(
+			boldFont, LABEL_FONT_SIZE,
+			ImVec2(30, 168),
+			IM_COL32(160, 170, 185, 255),
+			"FPS"
+		);
+
+		std::string fpsText =
+			std::to_string(static_cast<int>(std::floor(1.0f / deltaTime)));
+
+		drawRightAlignedText(168, fpsText.c_str());
+
+		// Frame Time
+		drawList->AddText(
+			boldFont, LABEL_FONT_SIZE,
+			ImVec2(30, 204),
+			IM_COL32(160, 170, 185, 255),
+			"Frame Time"
+		);
+
+		std::string frameTimeText =
+			std::to_string(1000.0f * deltaTime) + " ms";
+
+		drawRightAlignedText(204, frameTimeText.c_str());
+
+		// GPU Section heading
+		drawList->AddText(
+			boldFont, SUB_TITLE_FONT_SIZE,
+			ImVec2(30, 252),
+			IM_COL32(125, 211, 252, 255),
+			"GPU"
+		);
+
+		// Separator
+		drawList->AddLine(
+			ImVec2(30, 289),
+			ImVec2(CONTENT_RIGHT, 289),
+			IM_COL32(55, 65, 80, 255),
+			2.0f
+		);
+
+		// API
+		drawList->AddText(
+			boldFont, LABEL_FONT_SIZE,
+			ImVec2(30, 309),
+			IM_COL32(160, 170, 185, 255),
+			"API"
+		);
+
+		drawRightAlignedText(309, "Vulkan / CUDA");
+
+		// Device
+		drawList->AddText(
+			boldFont, LABEL_FONT_SIZE,
+			ImVec2(30, 345),
+			IM_COL32(160, 170, 185, 255),
+			"Device"
+		);
+
+		drawRightAlignedText(345, "NVIDIA GeForce RTX 4050");
+
+		// Parameters Section heading
+		drawList->AddText(
+			boldFont, SUB_TITLE_FONT_SIZE,
+			ImVec2(30, 400),
+			IM_COL32(125, 211, 252, 255),
+			"Parameters"
+		);
+
+		// Separator
+		drawList->AddLine(
+			ImVec2(30, 437),
+			ImVec2(CONTENT_RIGHT, 437),
+			IM_COL32(55, 65, 80, 255),
+			2.0f
+		);
+
+		// Vortex
+		drawList->AddText(
+			boldFont, LABEL_FONT_SIZE,
+			ImVec2(30, 457),
+			IM_COL32(160, 170, 185, 255),
+			"Vortex"
+		);
+
+		const char* vortexStatus = vortexEnabled ? "Enabled" : "Disabled";
+
+		drawRightAlignedText(457, vortexStatus);
+
+		// Vortex Duration
+		drawList->AddText(
+			boldFont, LABEL_FONT_SIZE,
+			ImVec2(30, 493),
+			IM_COL32(160, 170, 185, 255),
+			"Vortex Duration"
+		);
+
+		std::string vortexDurationText = std::to_string(vortexDuration);
+		drawRightAlignedText(493, vortexDurationText.c_str());
+
+		// Vortex Direction
+		drawList->AddText(
+			boldFont, LABEL_FONT_SIZE,
+			ImVec2(30, 529),
+			IM_COL32(160, 170, 185, 255),
+			"Vortex Direction"
+		);
+
+		const char* vortexDirectionText = vortexDirection >= 0 ? "CCW" : "CW";
+
+		drawRightAlignedText(529, vortexDirectionText);
+
+		// Vortex Strength
+		drawList->AddText(
+			boldFont, LABEL_FONT_SIZE,
+			ImVec2(30, 565),
+			IM_COL32(160, 170, 185, 255),
+			"Vortex Strength"
+		);
+
+		std::string vortexStrengthText = std::to_string(vortexStrength);
+		drawRightAlignedText(565, vortexStrengthText.c_str());
+
+		ImGui::Render();
 	}
 
 	void animate() {
@@ -460,6 +729,14 @@ class Wisp {
 			uniformData.view = glm::lookAt(camera.position, camera.lookAt, camera.cameraUp);
 			uniformData.screenSize = glm::vec2(engine.windowManager.windowSize.x, engine.windowManager.windowSize.y);
 
+			float phase = vortexTime / vortexDuration;
+			float cycle = cosf(6.2831853f * phase);
+
+			vortexStrength = 2.0f * (0.5f - 0.5f * cycle);
+			vortexDirection = (cycle >= 0.0f) ? 1.0f : -1.0f;
+
+			vortexStrength *= vortexDirection;
+
 			engine.resourceManager.copyDataIntoBuffer(UBHandle.allocationInfo.pMappedData, &uniformData, UBHandle.size);
 
 			engine.barrier.transitionDepthReadOnlyToAttachment(commandBuffer, FDTextureHandle.image);
@@ -497,6 +774,8 @@ class Wisp {
 			vkCmdEndRendering(commandBuffer);
 			engine.barrier.transitionDepthAttachmentToReadOnly(commandBuffer, FDTextureHandle.image);
 
+			drawOverlay();
+
 			engine.barrier.transitionImageFromUndefinedToColorAttachment(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
 			Engine::RenderingAttachment renderingAttachment = engine.setRenderingAttachment(engine.swapchainManager.imageViews[engine.swapchainManager.imageIndex]);
 			vkCmdBeginRendering(commandBuffer, &renderingAttachment.renderingInfo);
@@ -519,6 +798,12 @@ class Wisp {
 			vkCmdBindIndexBuffer(commandBuffer, particles.wireGeometry.IHandle.buffer, 0, VK_INDEX_TYPE_UINT32);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WirePipelineLayout, 0, 1, &UBDescriptorSet, 0, nullptr);
 			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(particles.wireGeometry.indices.size()), 1, 0, 0, 0);
+
+			// Draw ImGui on top of the scene
+			ImGui_ImplVulkan_RenderDrawData(
+				ImGui::GetDrawData(),
+				commandBuffer
+			);
 
 			vkCmdEndRendering(commandBuffer);
 			engine.barrier.transitionImageFromColorAttachmentToPresent(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
@@ -575,8 +860,9 @@ class Wisp {
 				engine.getCurrentFrame().frameFence
 			);
 
+		
 			//WE NEED TO MOVE THIS COMPUTATION TO CUDA, BORED RN
-			cudaInterface.simulate( vortexTime, vortexDuration );
+			cudaInterface.simulate( vortexStrength );
 
 			engine.vulkanContext.currentFrame = (engine.vulkanContext.currentFrame + 1) % engine.vulkanContext.MAX_FRAMES_IN_FLIGHT;
 
