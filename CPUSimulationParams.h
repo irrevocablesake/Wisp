@@ -16,7 +16,7 @@ struct CPUSimulationParams {
 	float restitution = 0.8f;
 	float smoothingRadius = 0.16f;
 	float mass = 0.512f;
-	float viscosityCoefficient = 0.01f;
+	float viscosityCoefficient = 0.00000001f;
 	float restDensity = 1000.0f;
 
 	float cflCoefficient = 0.4f;
@@ -25,8 +25,8 @@ struct CPUSimulationParams {
 
 	//int particlesCount = 40960;
 	//int particlesCount = 131072;
-	 int particlesCount = 102400;
-	//int particlesCount = 204800;
+	 //int particlesCount = 102400;
+	int particlesCount = 204800;
 	//int particlesCount = 409600;
 	//int particlesCount = 1024000;
 	//int particlesCount = 2048000;
