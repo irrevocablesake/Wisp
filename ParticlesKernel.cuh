@@ -51,6 +51,7 @@ class ParticlesKernel {
 
 		uint32_t* neighborCounts = nullptr;
 
+		float4* xsph = nullptr;
 
 		struct BoundaryParticle {
 			float4 position{};

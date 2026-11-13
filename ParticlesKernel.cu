@@ -4,6 +4,7 @@
 #include<cccl/cub/cub.cuh>
 
 #define MAX_SEARCH_RADIUS 1
+constexpr float XSPH_EPSILON = 0.05f;
 
 __device__ float3 calculateBoundaryPressureForce(
     float3 position,
@@ -290,7 +291,8 @@ __global__ void updateKernel(
     float3 boundsMin,
     float3 boundsMax,
     float radius,
-    float restitution)
+    float restitution,
+    const float4* __restrict__ xsph)
 {
     unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -310,6 +312,10 @@ __global__ void updateKernel(
     particle.velocity.x += (totalForce.x / particleMass) * deltaTime;
     particle.velocity.y += (totalForce.y / particleMass + gravity) * deltaTime;
     particle.velocity.z += (totalForce.z / particleMass) * deltaTime;
+
+    particle.velocity.x += xsph[index].x;
+    particle.velocity.y += xsph[index].y;
+    particle.velocity.z += xsph[index].z;
 
     particle.position.x += particle.velocity.x * deltaTime;
     particle.position.y += particle.velocity.y * deltaTime;
@@ -507,7 +513,11 @@ __global__ void __launch_bounds__(256, 2) calculatePressureAndViscosityForcesKer
 
     float boundaryParticleMass,
     float3 boundaryGridOrigin,
-    uint3 boundaryGridDimensions
+    uint3 boundaryGridDimensions,
+
+    float4* __restrict__ xsphOut,
+    float poly6Coefficient,
+    float xsphEpsilon
 ){
     uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -530,6 +540,7 @@ __global__ void __launch_bounds__(256, 2) calculatePressureAndViscosityForcesKer
 
     float3 pressureForce = make_float3(0.0f, 0.0f, 0.0f);
     float3 viscosityForce = make_float3(0.0f, 0.0f, 0.0f);
+    float3 xsphDelta = make_float3(0.0f, 0.0f, 0.0f);
 
     float smoothingRadiusSquared = smoothingRadius * smoothingRadius;
 
@@ -641,6 +652,20 @@ __global__ void __launch_bounds__(256, 2) calculatePressureAndViscosityForcesKer
                         viscosityForce.x += relativeVelocity.x * viscosityScale;
                         viscosityForce.y += relativeVelocity.y * viscosityScale;
                         viscosityForce.z += relativeVelocity.z * viscosityScale;
+
+                        // XSPH velocity correction
+                        float poly6Weight =
+                            poly6Coefficient *
+                            h2MinusDistanceSquared *
+                            h2MinusDistanceSquared *
+                            h2MinusDistanceSquared;
+
+                        float xsphScale =
+                            (particleMass / neighbourDensity) * poly6Weight;
+
+                        xsphDelta.x += relativeVelocity.x * xsphScale;
+                        xsphDelta.y += relativeVelocity.y * xsphScale;
+                        xsphDelta.z += relativeVelocity.z * xsphScale;
                     }
                 }
             }
@@ -683,6 +708,13 @@ __global__ void __launch_bounds__(256, 2) calculatePressureAndViscosityForcesKer
         viscosityForce.x,
         viscosityForce.y,
         viscosityForce.z,
+        0.0f
+    );
+
+    xsphOut[i] = make_float4(
+        xsphEpsilon * xsphDelta.x,
+        xsphEpsilon * xsphDelta.y,
+        xsphEpsilon * xsphDelta.z,
         0.0f
     );
 }
@@ -917,7 +949,10 @@ void ParticlesKernel::calculatePressureAndViscosityForces()
 
             simulationParams->boundaryParticleMass,
             simulationParams->boundaryGridOrigin,
-            simulationParams->boundaryGridDimensions
+            simulationParams->boundaryGridDimensions,
+            xsph,
+            POLY6_COEFFICIENT,
+            XSPH_EPSILON
         );
 }
 
@@ -964,6 +999,8 @@ void ParticlesKernel::initialize(CudaContext& _cudaContext, GPUSimulationParams 
     cudaMemsetAsync(cellEnd, 0xFF, rangeArraySize, cudaContext->stream);
 
     cudaMalloc( &neighborCounts, simulationParams -> particlesCount * sizeof(uint32_t) );
+
+    cudaMalloc(&xsph, count * sizeof(float4));
 
     initializeBoundaryGrid();
 
@@ -1031,6 +1068,7 @@ void ParticlesKernel::updateParticles(float deltaTime)
             simulationParams->bounds.min,
             simulationParams->bounds.max,
             wallOffset,
-            simulationParams->restitution
+            simulationParams->restitution,
+            xsph
         );
 }
