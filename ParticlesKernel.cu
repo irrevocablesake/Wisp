@@ -4,6 +4,11 @@
 #include<cccl/cub/cub.cuh>
 
 #define MAX_SEARCH_RADIUS 1
+
+#define SURFACE_TENSION_SIGMA     20.0f
+#define SURFACE_TENSION_THRESHOLD 2.02f
+#define SURFACE_TENSION_MAX_ACCEL 25.0f
+
 constexpr float XSPH_EPSILON = 0.05f;
 
 __device__ float3 calculateBoundaryPressureForce(
@@ -542,7 +547,14 @@ __global__ void __launch_bounds__(256, 2) calculatePressureAndViscosityForcesKer
     float3 viscosityForce = make_float3(0.0f, 0.0f, 0.0f);
     float3 xsphDelta = make_float3(0.0f, 0.0f, 0.0f);
 
+    float3 nAccum = make_float3(0.0f, 0.0f, 0.0f);
+    float lapAccum = 0.0f;
+
     float smoothingRadiusSquared = smoothingRadius * smoothingRadius;
+    float smoothingRadius9 = smoothingRadiusSquared * smoothingRadiusSquared
+        * smoothingRadiusSquared * smoothingRadiusSquared * smoothingRadius;
+
+    const float colorScalar = -945.0f / (32.0f * CUDART_PI_F * smoothingRadius9);
 
     int3 cell = make_int3(
         static_cast<int>(floorf((position.x - gridOrigin.x) / cellSize)),
@@ -666,6 +678,23 @@ __global__ void __launch_bounds__(256, 2) calculatePressureAndViscosityForcesKer
                         xsphDelta.x += relativeVelocity.x * xsphScale;
                         xsphDelta.y += relativeVelocity.y * xsphScale;
                         xsphDelta.z += relativeVelocity.z * xsphScale;
+
+                         
+                        float colorFieldScale =
+                            (particleMass / neighbourDensity) * colorScalar;
+
+                        float colorGradientScale =
+                            colorFieldScale *
+                            h2MinusDistanceSquared *
+                            h2MinusDistanceSquared;
+
+                        nAccum.x += colorGradientScale * displacement.x;
+                        nAccum.y += colorGradientScale * displacement.y;
+                        nAccum.z += colorGradientScale * displacement.z;
+
+                        lapAccum += colorFieldScale *
+                            h2MinusDistanceSquared *
+                            (3.0f * smoothingRadiusSquared - 7.0f * distanceSquared);
                     }
                 }
             }
@@ -695,6 +724,47 @@ __global__ void __launch_bounds__(256, 2) calculatePressureAndViscosityForcesKer
         pressureForce.x += boundaryForce.x;
         pressureForce.y += boundaryForce.y;
         pressureForce.z += boundaryForce.z;
+    }
+
+    // Surface tension: F = -sigma * lap(c) * n/|n|
+    float normalLength = sqrtf(
+        nAccum.x * nAccum.x +
+        nAccum.y * nAccum.y +
+        nAccum.z * nAccum.z
+    );
+
+    if (normalLength > SURFACE_TENSION_THRESHOLD)
+    {
+        float inverseNormalLength = 1.0f / normalLength;
+
+        float3 surfaceTensionForce = make_float3(
+            -SURFACE_TENSION_SIGMA * lapAccum * nAccum.x * inverseNormalLength,
+            -SURFACE_TENSION_SIGMA * lapAccum * nAccum.y * inverseNormalLength,
+            -SURFACE_TENSION_SIGMA * lapAccum * nAccum.z * inverseNormalLength
+        );
+
+        //surface acceleration cannot exceed SURFACE_TENSION_MAX_ACCEL
+        float surfaceTensionMagnitude = sqrtf(
+            surfaceTensionForce.x * surfaceTensionForce.x +
+            surfaceTensionForce.y * surfaceTensionForce.y +
+            surfaceTensionForce.z * surfaceTensionForce.z
+        );
+
+        float maximumSurfaceTensionForce =
+            SURFACE_TENSION_MAX_ACCEL * particleMass;
+
+        if (surfaceTensionMagnitude > maximumSurfaceTensionForce)
+        {
+            float scale = maximumSurfaceTensionForce / surfaceTensionMagnitude;
+
+            surfaceTensionForce.x *= scale;
+            surfaceTensionForce.y *= scale;
+            surfaceTensionForce.z *= scale;
+        }
+
+        pressureForce.x += surfaceTensionForce.x;
+        pressureForce.y += surfaceTensionForce.y;
+        pressureForce.z += surfaceTensionForce.z;
     }
 
     particles[i].pressureForces = make_float4(
