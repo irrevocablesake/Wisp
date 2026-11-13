@@ -5,6 +5,131 @@
 
 #define MAX_SEARCH_RADIUS 1
 
+__device__ float3 calculateBoundaryPressureForce(
+    float3 position,
+    float particleDensity,
+    float particlePressure,
+    float particleMass,
+    const ParticlesKernel::BoundaryParticle* boundaryParticles,
+    const uint32_t* __restrict__ sortedBoundaryParticleIndices,
+    const uint32_t* __restrict__ boundaryCellStart,
+    const uint32_t* __restrict__ boundaryCellEnd,
+    float boundaryParticleMass,
+    float smoothingRadius,
+    float3 gridOrigin,
+    uint3 gridDimensions,
+    float cellSize,
+    float spikyCoefficient
+){
+    float3 force = make_float3(0.0f, 0.0f, 0.0f);
+
+    if (particlePressure <= 0.0f)
+        return force;
+
+    const float smoothingRadiusSquared = smoothingRadius * smoothingRadius;
+    const float density = fmaxf(particleDensity, 1e-6f);
+
+    const float pressureTerm =
+        particlePressure / (density * density);
+
+    const float pressureScale =
+        -particleMass * boundaryParticleMass * pressureTerm;
+
+    int3 cell = make_int3(
+        static_cast<int>(floorf((position.x - gridOrigin.x) / cellSize)),
+        static_cast<int>(floorf((position.y - gridOrigin.y) / cellSize)),
+        static_cast<int>(floorf((position.z - gridOrigin.z) / cellSize))
+    );
+
+    cell.x = max(0, min(cell.x, static_cast<int>(gridDimensions.x) - 1));
+    cell.y = max(0, min(cell.y, static_cast<int>(gridDimensions.y) - 1));
+    cell.z = max(0, min(cell.z, static_cast<int>(gridDimensions.z) - 1));
+
+#pragma unroll
+    for (int z = -MAX_SEARCH_RADIUS; z <= MAX_SEARCH_RADIUS; ++z)
+    {
+#pragma unroll
+        for (int y = -MAX_SEARCH_RADIUS; y <= MAX_SEARCH_RADIUS; ++y)
+        {
+#pragma unroll
+            for (int x = -MAX_SEARCH_RADIUS; x <= MAX_SEARCH_RADIUS; ++x)
+            {
+                int3 neighbourCell = make_int3(
+                    cell.x + x,
+                    cell.y + y,
+                    cell.z + z
+                );
+
+                if (neighbourCell.x < 0 ||
+                    neighbourCell.y < 0 ||
+                    neighbourCell.z < 0 ||
+                    neighbourCell.x >= static_cast<int>(gridDimensions.x) ||
+                    neighbourCell.y >= static_cast<int>(gridDimensions.y) ||
+                    neighbourCell.z >= static_cast<int>(gridDimensions.z))
+                {
+                    continue;
+                }
+
+                const uint32_t cellID =
+                    neighbourCell.x +
+                    gridDimensions.x *
+                    (neighbourCell.y +
+                        gridDimensions.y * neighbourCell.z);
+
+                const uint32_t start = __ldg(&boundaryCellStart[cellID]);
+
+                if (start == UINT_MAX)
+                    continue;
+
+                const uint32_t end = __ldg(&boundaryCellEnd[cellID]);
+
+                for (uint32_t i = start; i < end; ++i)
+                {
+                    const uint32_t boundaryID =
+                        __ldg(&sortedBoundaryParticleIndices[i]);
+
+                    const ParticlesKernel::BoundaryParticle* bPtr =
+                        &boundaryParticles[boundaryID];
+
+                    const float3 boundaryPosition = make_float3(
+                        __ldg(&bPtr->position.x),
+                        __ldg(&bPtr->position.y),
+                        __ldg(&bPtr->position.z)
+                    );
+
+                    const float distanceX = position.x - boundaryPosition.x;
+                    const float distanceY = position.y - boundaryPosition.y;
+                    const float distanceZ = position.z - boundaryPosition.z;
+
+                    const float distanceSquared =
+                        distanceX * distanceX +
+                        distanceY * distanceY +
+                        distanceZ * distanceZ;
+
+                    if (distanceSquared <= 1e-12f ||
+                        distanceSquared >= smoothingRadiusSquared)
+                    {
+                        continue;
+                    }
+
+                    const float distance = sqrtf(distanceSquared);
+                    const float differenceH = smoothingRadius - distance;
+
+                    const float gradientWeight =
+                        spikyCoefficient *
+                        differenceH * differenceH / distance;
+
+                    force.x += pressureScale * gradientWeight * distanceX;
+                    force.y += pressureScale * gradientWeight * distanceY;
+                    force.z += pressureScale * gradientWeight * distanceZ;
+                }
+            }
+        }
+    }
+
+    return force;
+}
+
 __device__ float calculateBoundaryDensityContribution(
     float3 position,
     const ParticlesKernel::BoundaryParticle* boundaryParticles,
@@ -358,7 +483,7 @@ __global__ void __launch_bounds__(512, 2) calculateDensityAndPressureKernel(
 
 }
 
-__global__ void __launch_bounds__(512, 2) calculatePressureAndViscosityForcesKernel(
+__global__ void __launch_bounds__(256, 2) calculatePressureAndViscosityForcesKernel(
     ParticlesKernel::CudaParticle* particles,
     uint32_t particleCount,
     float particleMass,
@@ -372,9 +497,18 @@ __global__ void __launch_bounds__(512, 2) calculatePressureAndViscosityForcesKer
     uint3 gridDimensions,
 
     const uint32_t* __restrict__ cellStart,
-    const uint32_t* __restrict__ cellEnd
-    )
-{
+    const uint32_t* __restrict__ cellEnd,
+
+    const ParticlesKernel::BoundaryParticle* boundaryParticles,
+    uint32_t boundaryParticlesCount,
+    const uint32_t* __restrict__ sortedBoundaryParticleIndices,
+    const uint32_t* __restrict__ boundaryCellStart,
+    const uint32_t* __restrict__ boundaryCellEnd,
+
+    float boundaryParticleMass,
+    float3 boundaryGridOrigin,
+    uint3 boundaryGridDimensions
+){
     uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (i >= particleCount)
@@ -442,8 +576,18 @@ __global__ void __launch_bounds__(512, 2) calculatePressureAndViscosityForcesKer
                     if (i == k) continue;
 
                     const ParticlesKernel::CudaParticle* nPtr = &particles[k];
-                    float3 nPos = make_float3(__ldg(&nPtr->position.x), __ldg(&nPtr->position.y), __ldg(&nPtr->position.z));
-                    float3 nVel = make_float3(__ldg(&nPtr->velocity.x), __ldg(&nPtr->velocity.y), __ldg(&nPtr->velocity.z));
+                    float3 nPos = make_float3(
+                        __ldg(&nPtr->position.x),
+                        __ldg(&nPtr->position.y),
+                        __ldg(&nPtr->position.z)
+                    );
+
+                    float3 nVel = make_float3(
+                        __ldg(&nPtr->velocity.x),
+                        __ldg(&nPtr->velocity.y),
+                        __ldg(&nPtr->velocity.z)
+                    );
+
                     float nDensity = __ldg(&nPtr->density);
                     float nPress = __ldg(&nPtr->pressure);
 
@@ -453,7 +597,7 @@ __global__ void __launch_bounds__(512, 2) calculatePressureAndViscosityForcesKer
                         position.z - nPos.z
                     );
 
-                    float distanceSquared = 
+                    float distanceSquared =
                         displacement.x * displacement.x +
                         displacement.y * displacement.y +
                         displacement.z * displacement.z;
@@ -464,22 +608,24 @@ __global__ void __launch_bounds__(512, 2) calculatePressureAndViscosityForcesKer
 
                         float neighbourDensity = fmaxf(nDensity, 1e-6f);
 
-                        // Pressure force
-                        float gradientMagnitude = spikyCoefficient * difference * difference;
+                        float h2MinusDistanceSquared = smoothingRadiusSquared - distanceSquared;
 
-                        float3 gradient = make_float3(
-                            gradientMagnitude * displacement.x / distance,
-                            gradientMagnitude * displacement.y / distance,
-                            gradientMagnitude * displacement.z / distance
-                        );
+                        // Symmetric pressure force, previously we didnt compte symmetric
+                        float gradientMagnitude =
+                            spikyCoefficient * difference * difference / distance;
 
-                        float averagePressure = 0.5f * (particle.pressure + nPress);
+                        float particleDensity = fmaxf(particle.density, 1e-6f);
 
-                        float pressureScale = -particleMass * averagePressure / neighbourDensity;
+                        float pressureTerm =
+                            particle.pressure / (particleDensity * particleDensity) +
+                            nPress / (neighbourDensity * neighbourDensity);
 
-                        pressureForce.x += pressureScale * gradient.x;
-                        pressureForce.y += pressureScale * gradient.y;
-                        pressureForce.z += pressureScale * gradient.z;
+                        float pressureScale =
+                            -particleMass * particleMass * pressureTerm;
+
+                        pressureForce.x += pressureScale * gradientMagnitude * displacement.x;
+                        pressureForce.y += pressureScale * gradientMagnitude * displacement.y;
+                        pressureForce.z += pressureScale * gradientMagnitude * displacement.z;
 
                         // Viscosity force
                         float laplacian = viscosityKernelCoefficient * difference;
@@ -499,6 +645,31 @@ __global__ void __launch_bounds__(512, 2) calculatePressureAndViscosityForcesKer
                 }
             }
         }
+    }
+
+    // Boundary pressure force
+    if (boundaryParticlesCount > 0)
+    {
+        float3 boundaryForce = calculateBoundaryPressureForce(
+            position,
+            particle.density,
+            particle.pressure,
+            particleMass,
+            boundaryParticles,
+            sortedBoundaryParticleIndices,
+            boundaryCellStart,
+            boundaryCellEnd,
+            boundaryParticleMass,
+            smoothingRadius,
+            boundaryGridOrigin,
+            boundaryGridDimensions,
+            cellSize,
+            spikyCoefficient
+        );
+
+        pressureForce.x += boundaryForce.x;
+        pressureForce.y += boundaryForce.y;
+        pressureForce.z += boundaryForce.z;
     }
 
     particles[i].pressureForces = make_float4(
@@ -735,7 +906,18 @@ void ParticlesKernel::calculatePressureAndViscosityForces()
             simulationParams -> gridDimensions,
 
             cellStart,
-            cellEnd
+            cellEnd,
+
+            static_cast<BoundaryParticle*>(BPcudaBuffer),
+            simulationParams->boundaryParticlesCount,
+
+            sortedBoundaryParticleIndices,
+            boundaryCellStart,
+            boundaryCellEnd,
+
+            simulationParams->boundaryParticleMass,
+            simulationParams->boundaryGridOrigin,
+            simulationParams->boundaryGridDimensions
         );
 }
 
@@ -833,6 +1015,8 @@ void ParticlesKernel::launchReorder()
 
 void ParticlesKernel::updateParticles(float deltaTime)
 {
+    const float wallOffset = 0.25f * simulationParams->smoothingRadius;
+
     updateKernel << <
         BLOCKS_COUNT,
         THREADS_PER_BLOCK,
@@ -846,7 +1030,7 @@ void ParticlesKernel::updateParticles(float deltaTime)
             simulationParams->mass,
             simulationParams->bounds.min,
             simulationParams->bounds.max,
-            simulationParams->particleRadius,
+            wallOffset,
             simulationParams->restitution
         );
 }
