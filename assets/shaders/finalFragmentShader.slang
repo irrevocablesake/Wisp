@@ -35,6 +35,27 @@ float3 getViewSpacePosition(float2 uv) {
     return viewPosition.xyz / viewPosition.w;
 }
 
+float3 reconstructNormal(float2 uv)
+{
+    float2 texel = 1.0 / uniformData.screenSize;
+
+    //Normal Basis
+    float3 center = getFilteredViewPosition(uv);
+    float3 right = getFilteredViewPosition(uv + float2(texel.x, 0.0));
+    float3 up = getFilteredViewPosition(uv - float2(0.0, texel.y));
+
+    float3 dx = right - center;
+    float3 dy = up - center;
+
+    float3 normal = normalize(cross(dy, dx));
+
+    // Orient the normal towards the camera.
+    if (dot(normal, normalize(-center)) < 0.0)
+        normal = -normal;
+
+    return normal;
+}
+
 float3 getFilteredViewPosition(float2 uv)
 {
     float centerDepth = depthTexture.Sample(uv);
@@ -93,14 +114,14 @@ float3 getFilteredViewPosition(float2 uv)
 [shader("fragment")]
 float4 main(VSOutput input) : SV_Target
 {
-    float3 position = getFilteredViewPosition(input.uv);
+    float depth = depthTexture.Sample(input.uv);
 
-    float visualization = saturate(-position.z / 10.0);
+    if (depth >= BG_THRESHHOLD)
+        return float4(0.0, 0.0, 0.0, 1.0);
 
-    return float4(
-        visualization,
-        visualization,
-        visualization,
-        1.0
-    );
+    float3 normal = reconstructNormal(input.uv);
+
+    float3 visualization = normal * 0.5 + 0.5;
+
+    return float4(visualization, 1.0);
 }
