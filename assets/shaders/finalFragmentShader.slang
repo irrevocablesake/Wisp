@@ -22,6 +22,9 @@ static const int R = 5;
 static const float sigmaSpatial = 2.5;
 static const float sigmaDepth = 0.30;
 
+static const float IOR = 1.33;
+static const float ABSORB = 1.05;
+
 static const float3 ENV_TOP = float3(1.0, 1.0, 1.0);
 static const float3 ENV_BOTTOM = float3(0.9, 0.9, 0.9);
 
@@ -179,6 +182,39 @@ float4 main(VSOutput input) : SV_Target
     float3 I = normalize(worldPos - camPos);
     float3 V = -I;
 
-    
-    return float4(V * 0.5 + 0.5, 1.0);
+    // Refraction
+    float3 refractedDirection = refract(I, N, 1.0 / IOR);
+
+    if (dot(refractedDirection, refractedDirection) < 1e-6)
+        refractedDirection = reflect(I, N);
+
+    // Distance travelled through fluid
+    float estimatedThickness = 2.0;
+
+    if (refractedDirection.y < -1e-4) {
+        float distanceToFloor = (FLOOR_Y - worldPos.y) / refractedDirection.y;
+
+        if (distanceToFloor > 0.0)
+            estimatedThickness = distanceToFloor;
+    }
+
+    // Absorption
+    float3 transmittance = exp(
+        -ABSORB * estimatedThickness * float3(0.55, 0.28, 0.18)
+    );
+
+    float3 backgroundColor = background(worldPos, refractedDirection);
+
+    float3 refractedColor = backgroundColor * transmittance + float3(0.0, 0.18, 0.22) * (1.0 - transmittance);
+
+    // Reflection
+    float3 reflectedColor = skyColor(reflect(I, N));
+
+    // Fresnel
+    float cosTheta = saturate(dot(N, V));
+    float fresnelFactor = 0.02 + 0.98 * pow(1.0 - cosTheta, 5.0);
+
+    float3 color = lerp(refractedColor, reflectedColor, fresnelFactor);
+
+    return float4(color, 1.0);
 }
