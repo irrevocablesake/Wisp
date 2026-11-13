@@ -35,14 +35,14 @@ float3 getViewSpacePosition(float2 uv) {
     return viewPosition.xyz / viewPosition.w;
 }
 
-float3 reconstructNormal(float2 uv)
-{
+float3 reconstructNormal(float2 uv){
     float2 texel = 1.0 / uniformData.screenSize;
+    float2 offset = texel * 3.0;
 
-    //Normal Basis
+    // Normal Basis
     float3 center = getFilteredViewPosition(uv);
-    float3 right = getFilteredViewPosition(uv + float2(texel.x, 0.0));
-    float3 up = getFilteredViewPosition(uv - float2(0.0, texel.y));
+    float3 right = getFilteredViewPosition(uv + float2(offset.x, 0.0));
+    float3 up = getFilteredViewPosition(uv - float2(0.0, offset.y));
 
     float3 dx = right - center;
     float3 dy = up - center;
@@ -62,7 +62,7 @@ float3 getFilteredViewPosition(float2 uv)
 
     // Background pixels have no valid surface position.
     if (centerDepth >= BG_THRESHHOLD)
-        return float3(0.0, 0.0, 0.0);
+        return getViewSpacePosition(uv); // can we return place-holder black color?
 
     float3 center = getViewSpacePosition(uv);
 
