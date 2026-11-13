@@ -25,6 +25,9 @@ static const float sigmaDepth = 0.30;
 static const float3 ENV_TOP = float3(1.0, 1.0, 1.0);
 static const float3 ENV_BOTTOM = float3(0.9, 0.9, 0.9);
 
+static const float FLOOR_Y = -4.0;
+static const float3 ENV_FLOOR = float3(0.95, 0.95, 0.95);
+
 static const float BG_THRESHHOLD = 0.999999;
 
 float3 skyColor(float3 dir){
@@ -138,16 +141,32 @@ float3 getWorldSpacePosition( float2 uv, float3 cameraPosition, float3x3 Rt ){
     return mul(Rt, viewPosition) + cameraPosition;
 }
 
+float3 background(float3 ro, float3 rd) {
+    float3 sky = skyColor(rd);
+
+    if (rd.y < -1e-4) {
+        float t = (FLOOR_Y - ro.y) / rd.y;
+
+        if (t > 0.0) {
+            float fog = exp(-t * 0.02);
+            return lerp(sky, ENV_FLOOR, fog);
+        }
+    }
+
+    return sky;
+}
+
 [shader("fragment")]
 float4 main(VSOutput input) : SV_Target {
     float3x3 Rt = transpose((float3x3)uniformData.view);
+    float3 camPos = -mul(Rt, uniformData.view[3].xyz);
 
     float depth = depthTexture.Sample(input.uv);
 
     if (depth >= BG_THRESHHOLD)
     {
         float3 rd = getWorldViewDirection(input.uv, Rt);
-        return float4(skyColor(rd), 1.0);
+        return float4(background(camPos, rd), 1.0);
     }
 
     return float4(0.0, 0.0, 0.0, 1.0);
