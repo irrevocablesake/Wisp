@@ -22,7 +22,15 @@ static const int R = 5;
 static const float sigmaSpatial = 2.5;
 static const float sigmaDepth = 0.30;
 
+static const float3 ENV_TOP = float3(1.0, 1.0, 1.0);
+static const float3 ENV_BOTTOM = float3(0.9, 0.9, 0.9);
+
 static const float BG_THRESHHOLD = 0.999999;
+
+float3 skyColor(float3 dir){
+    float t = saturate(dir.y * 0.5 + 0.5);
+    return lerp(ENV_BOTTOM, ENV_TOP, t);
+}
 
 float3 getViewSpacePosition(float2 uv) {
     float depth = depthTexture.Sample(uv);
@@ -111,17 +119,36 @@ float3 getFilteredViewPosition(float2 uv)
     return center;
 }
 
+float3 getWorldViewDirection(float2 uv, float3x3 Rt){
+    float2 ndc = uv - 1.0;
+
+    float4 viewPosition = mul(
+        uniformData.inverseProjection,
+        float4(ndc, 1.0, 1.0)
+    );
+
+    float3 viewDirection = normalize(viewPosition.xyz / viewPosition.w);
+
+    return normalize(mul(Rt, viewDirection));
+}
+
+//NOTE: WE SHOULD MOVE THIS COMPUTATION TO CPU? TALKING ABOUT THE INVERSE VIEW
+float3 getWorldSpacePosition( float2 uv, float3 cameraPosition, float3x3 Rt ){
+    float3 viewPosition = getFilteredViewPosition(uv);
+    return mul(Rt, viewPosition) + cameraPosition;
+}
+
 [shader("fragment")]
-float4 main(VSOutput input) : SV_Target
-{
+float4 main(VSOutput input) : SV_Target {
+    float3x3 Rt = transpose((float3x3)uniformData.view);
+
     float depth = depthTexture.Sample(input.uv);
 
     if (depth >= BG_THRESHHOLD)
-        return float4(0.0, 0.0, 0.0, 1.0);
+    {
+        float3 rd = getWorldViewDirection(input.uv, Rt);
+        return float4(skyColor(rd), 1.0);
+    }
 
-    float3 normal = reconstructNormal(input.uv);
-
-    float3 visualization = normal * 0.5 + 0.5;
-
-    return float4(visualization, 1.0);
+    return float4(0.0, 0.0, 0.0, 1.0);
 }
