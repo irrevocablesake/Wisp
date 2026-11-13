@@ -62,6 +62,11 @@ class Wisp {
 		glm::vec2 screenSize;
 	} uniformData;
 
+	bool vortexEnabled = false;
+	float vortexTime = 0.0f;
+	const float vortexStartTime = 20.0f;
+	const float vortexDuration = 40.0f;
+
 	//struct Camera {
 	//	glm::vec3 position{ 6.0f, 6.0f, 6.0f };
 	//	glm::vec3 cameraUp{ 0, 1, 0 };
@@ -409,6 +414,16 @@ class Wisp {
 
 			elapsedTime = (float)(currentFrameTime - startFrameTime) / (float)frequency;
 
+			if (!vortexEnabled && elapsedTime >= vortexStartTime)
+				vortexEnabled = true;
+
+			if (vortexEnabled){
+				vortexTime += deltaTime;
+
+				if (vortexTime >= vortexDuration)
+					vortexTime -= vortexDuration;
+			}
+
 			vkWaitForFences( engine.vulkanContext.logicalDeviceIF.handle, 1, &engine.getCurrentFrame().frameFence, true, UINT64_MAX);
 
 			vkAcquireNextImageKHR(engine.vulkanContext.logicalDeviceIF.handle, engine.swapchainManager.swapchain, UINT64_MAX, engine.getCurrentFrame().imageAvailable, VK_NULL_HANDLE, &engine.swapchainManager.imageIndex);
@@ -560,7 +575,8 @@ class Wisp {
 				engine.getCurrentFrame().frameFence
 			);
 
-			cudaInterface.simulate();
+			//WE NEED TO MOVE THIS COMPUTATION TO CUDA, BORED RN
+			cudaInterface.simulate( vortexTime, vortexDuration );
 
 			engine.vulkanContext.currentFrame = (engine.vulkanContext.currentFrame + 1) % engine.vulkanContext.MAX_FRAMES_IN_FLIGHT;
 

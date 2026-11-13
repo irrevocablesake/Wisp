@@ -17,7 +17,7 @@ class CudaInterface {
 		cudaExternalSemaphore_t cudaToVk{};
 
 	public:
-		void simulate();
+		void simulate( float vortexTime, float vertexDuration );
 		void initialize(const std::array< uint8_t, 16 >& deviceUUID, const CPUSimulationParams& _simulationParams );
 		cudaExternalSemaphore_t importSemaphore(HANDLE vkToCudaHandle );
 		void cudaWaitingForVulkan();

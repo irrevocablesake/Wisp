@@ -297,7 +297,9 @@ __global__ void updateKernel(
     float3 boundsMax,
     float radius,
     float restitution,
-    const float4* __restrict__ xsph)
+    const float4* __restrict__ xsph,
+    float vortexTime,
+    float vortexDuration)
 {
     unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -328,7 +330,13 @@ __global__ void updateKernel(
         - Ensure particle isn't at center of vortex
         - Apply inverse of the distance for acceleration
     */
-    const float vortexStrength = 1.2f;
+    float phase = vortexTime / vortexDuration;
+    float cycle = cosf(6.2831853f * phase);
+
+    float vortexStrength = 2.0f * (0.5f - 0.5f * cycle);
+    float vortexDirection = (cycle >= 0.0f) ? 1.0f : -1.0f;
+
+    vortexStrength *= vortexDirection;
     const float3 vortexCenter = make_float3(0.0f, 0.0f, 0.0f);
 
     float3 radialDirection = make_float3(
@@ -1150,7 +1158,7 @@ void ParticlesKernel::launchReorder()
             );
 }
 
-void ParticlesKernel::updateParticles(float deltaTime)
+void ParticlesKernel::updateParticles(float deltaTime, float vortexTime, float vortexDuration )
 {
     const float wallOffset = 0.25f * simulationParams->smoothingRadius;
 
@@ -1169,6 +1177,8 @@ void ParticlesKernel::updateParticles(float deltaTime)
             simulationParams->bounds.max,
             wallOffset,
             simulationParams->restitution,
-            xsph
+            xsph,
+            vortexTime,
+            vortexDuration
         );
 }
