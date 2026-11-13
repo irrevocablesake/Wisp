@@ -14,20 +14,27 @@ cudaExternalSemaphore_t CudaInterface::importSemaphore(HANDLE vkToCudaHandle) {
 void CudaInterface::simulate(){
     cudaWaitingForVulkan();
 
-    particlesKernel.generateIDs();
-    particlesKernel.sortIDs();
-    particlesKernel.launchReorder();
-    particlesKernel.buildCellRanges();
-    particlesKernel.calculateDensityAndPressure();
-    particlesKernel.calculatePressureAndViscosityForces();
-    particlesKernel.updateParticles(0.005f);
-    
-    std::swap(
-        particlesKernel.particleBufferA,
-        particlesKernel.particleBufferB
-    );
+    const float speedOfSound = sqrtf(simulationParams.gasConstant);
+    float value = simulationParams.cflCoefficient * simulationParams.smoothingRadius / speedOfSound;
+    const float dt = fminf( value, simulationParams.maxDeltaTime );
 
-    particlesKernel.currentBufferIndex ^= 1;
+    constexpr int SUBSTEPS = 8;
+    for (int s = 0; s < SUBSTEPS; ++s) {
+        particlesKernel.generateIDs();
+        particlesKernel.sortIDs();
+        particlesKernel.launchReorder();
+        particlesKernel.buildCellRanges();
+        particlesKernel.calculateDensityAndPressure();
+        particlesKernel.calculatePressureAndViscosityForces();
+        particlesKernel.updateParticles(dt);
+
+        std::swap(
+            particlesKernel.particleBufferA,
+            particlesKernel.particleBufferB
+        );
+
+        particlesKernel.currentBufferIndex ^= 1;
+    }
 
     signalCudaFinished();
 }
