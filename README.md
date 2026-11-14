@@ -1,7 +1,7 @@
 # Wisp
 
 <p align="center">
-  <img src="images/image.png" width="100%"/>
+  <img src="images/image.png" width="80%"/>
   <br>
   <em>A Computational Fluid Dynamics Simulation based on SPH, implemented using Vulkan + CUDA Interop</em>
 </p>
@@ -10,6 +10,16 @@ Perhaps, this is an extension to my [2D Fluid Simulator](https://github.com/irre
 
 One fine Friday, I was hunting for a project idea to keep myself busy over the weekend. But, what was supposed to be a weekend project, turned into a 3 week fun journey of delving into Maths, Physics and Optimizations. All the effort was spent to implement a simulation model known as Smoothened Particle Hydro-dynamics ( Physics based ). And representing the model results as discrete particles. Eventually, a surface was approximated through fragment shader computations, known as Screen Space Fluid ( SSF ), to give the fluid a more uniform look.
 
+## Index
+
+- [Algorithm](#Algorithm)
+- [Architecture](#Architecture)
+- [Rendering](#Rendering)
+- [Simulation](#Simulation)
+- [Performance](#Performance)
+- [Results](#Results)
+- [Profiling](#Profiling)
+- [References](#References)
 ## Algorithm
 
 The idea remains quite similar to our 2D simulation: Fluids flow. But this time, instead of representing the fluid using fields on a grid, we represent it using individual particles. Each particle represents a small portion of the fluid and carries properties such as position, velocity and mass. Together, these particles allow us to approximate the behavior of a continuous fluid.
@@ -55,7 +65,7 @@ For Rendering, there are really 2 methods either use a Ray Marcher to extract a 
 
 We run the compute pipeline and update the data, run a depth-only graphics pipeline and write to a texture, then a final pipeline pass that renders the depth texture values as SSF. Additionally, there is another pipeline that draws the "wire" or the "room" bounds.
 
-# Simulation
+## Simulation
 
 https://github.com/user-attachments/assets/0af89b60-4f19-4500-a13b-b92059dd3a14
 
@@ -65,7 +75,7 @@ I was able to push my system i.e NVIDIA GeForce 4050 Mobile GPU to it's absolute
 
 It may be quite easy to think that, we have to just optimize compute shaders and the performance will increase. Often, people forget that it's not just about fast computation but also the rasterization pipeline. At 4M or 5M particles, the rasterizer starts choking up due to memory bandwidth, throughput, and overdraw, unfortunately - there's just no way around it, we possibly may implement some smart techniques to overcome it but still there are limitations.
 
-## Results
+### Results
 
 - **1 Sub-step:** 5M–6M particles @ 30–40 FPS
 - **8 Sub-steps:** 300K–350K particles @ 30–40 FPS
@@ -73,3 +83,5 @@ It may be quite easy to think that, we have to just optimize compute shaders and
 ## Profiling
 
 For Profiling, I used the Holy Trinity i.e NSight Systems, NSight Compute and NSight Graphics. I would use them to find the bottle necks, cache throughput and overall work through put, weigh which process is taking the longest and improve them.
+
+## References
