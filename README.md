@@ -17,7 +17,7 @@ One fine Friday, I was hunting for a project idea to keep myself busy over the w
 - [Rendering](#Rendering)
 - [Simulation](#Simulation)
 - [Performance](#Performance)
-- [Results](#Results)
+  - [Results](#Results)
 - [Profiling](#Profiling)
 - [References](#References)
 ## Algorithm
