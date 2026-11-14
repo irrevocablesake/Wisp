@@ -1,6 +1,10 @@
 # Wisp
 
-A Computational Fluid Dynamics Simulation based on SPH, implemented using Vulkan + CUDA Interop
+<p align="center">
+  <img src="images/image.png" width="100%"/>
+  <br>
+  <em>A Computational Fluid Dynamics Simulation based on SPH, implemented using Vulkan + CUDA Interop</em>
+</p>
 
 Perhaps, this is an extension to my [2D Fluid Simulator](https://github.com/irrevocablesake/Ryutai). 
 
