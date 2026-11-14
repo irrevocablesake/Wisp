@@ -51,6 +51,10 @@ For Rendering, there are really 2 methods either use a Ray Marcher to extract a 
 
 We run the compute pipeline and update the data, run a depth-only graphics pipeline and write to a texture, then a final pipeline pass that renders the depth texture values as SSF. Additionally, there is another pipeline that draws the "wire" or the "room" bounds.
 
+# Simulation
+
+https://github.com/user-attachments/assets/0af89b60-4f19-4500-a13b-b92059dd3a14
+
 ## Performance
 
 I was able to push my system i.e NVIDIA GeForce 4050 Mobile GPU to it's absolute limits. With a single sub-step, the system can handle a lot of particles. But Simulations require sub-stepping to get correct results in relation to frame, so with higher sub-steps the performance suffers slightly.
