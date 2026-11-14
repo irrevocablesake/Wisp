@@ -8,7 +8,9 @@
 
 Perhaps, this is an extension to my [2D Fluid Simulator](https://github.com/irrevocablesake/Ryutai). 
 
-One fine Friday, I was hunting for a project idea to keep myself busy over the weekend. But, what was supposed to be a weekend project, turned into a 3 week fun journey of delving into Maths, Physics and Optimizations. All the effort was spent to implement a simulation model known as **Smoothened Particle Hydro-dynamics** ( Physics based ). And representing the model results as discrete particles. Eventually, a surface was approximated through fragment shader computations, known as **Screen Space Fluid** ( SSF ), to give the fluid a more uniform look.
+One fine Friday, I was hunting for a project idea to keep myself busy over the weekend. But, what was supposed to be a weekend project, turned into a 3 week fun journey of delving into Maths, Physics and Optimizations. All the effort was spent to implement a simulation model known as **Smoothened Particle Hydro-dynamics** ( Physics based ). And representing the model results as discrete particles. Eventually, a surface was approximated through fragment shader computations, known as **Screen Space Fluid** ( SSF ), to give the fluid a more uniform look. 
+
+Note: Please fine Video examples in the [Simulation](#Simulation) section
 
 ## Index
 
