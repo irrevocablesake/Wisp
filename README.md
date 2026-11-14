@@ -69,10 +69,9 @@ We run the compute pipeline and update the data, run a **depth-only** graphics p
 
 https://github.com/user-attachments/assets/0af89b60-4f19-4500-a13b-b92059dd3a14
 
-<video controls width="100%">
-  <source src="./images/output.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+https://github.com/user-attachments/assets/5c7b5e1c-859b-4204-8674-283ecddd3d16
+
+https://github.com/user-attachments/assets/541f18fb-420d-4d62-b732-6dadb4dd378b
 
 ## Performance
 
