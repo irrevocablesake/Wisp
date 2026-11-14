@@ -85,3 +85,8 @@ It may be quite easy to think that, we have to just optimize compute shaders and
 For Profiling, I used the Holy Trinity i.e NSight Systems, NSight Compute and NSight Graphics. I would use them to find the bottle necks, cache throughput and overall work through put, weigh which process is taking the longest and improve them.
 
 ## References
+- ![NVIDIA SSF Presentation](https://developer.download.nvidia.com/presentations/2010/gdc/Direct3D_Effects.pdf)
+- ![Particle-Based Fluid Simulation for Interactive Applications](https://matthias-research.github.io/pages/publications/sca03.pdf)
+- ![Position Based Fluids](https://mmacklin.com/pbf_sig_preprint.pdf)
+- ![SSF](https://wstahw.win.tue.nl/edu/2IV06/andrei/particle_rendering/provided/p91-van_der_laan.pdf)
+- ![Vulkan-CUDA Interop](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/graphics-interop.html)
