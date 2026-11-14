@@ -69,6 +69,11 @@ We run the compute pipeline and update the data, run a **depth-only** graphics p
 
 https://github.com/user-attachments/assets/0af89b60-4f19-4500-a13b-b92059dd3a14
 
+<video controls width="100%">
+  <source src="./images/output.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+
 ## Performance
 
 I was able to push my system i.e **NVIDIA GeForce 4050 Mobile GPU** to it's absolute limits. With a single sub-step, the system can handle a lot of particles. But Simulations require sub-stepping to get correct results in relation to frame, so with higher sub-steps the performance suffers slightly.
